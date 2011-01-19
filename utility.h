@@ -127,12 +127,6 @@
 extern "C" {
 #endif
 
-struct idf_reply_packet {
-  unsigned int entry_exists;
-  unsigned int pos;
-  double idf;
-} __attribute__((packed));
-
 static const char *prog_name;
 static FILE *out_stream = NULL;
 static const char *out_stream_name = NULL;

@@ -5,7 +5,7 @@ EXECUTABLES := tokenizer tf idf_dic reader_2col streaming_tokenizer \
 OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
 	w_to_vector.o reader_vec.o
 
-CPPFLAGS := -DBUFFER_SIZE=4096 -DRCV_TIMEOUT_MIN=100 -DRCV_TIMEOUT_MAX=1000
+CPPFLAGS := -DBUFFER_SIZE=4096
 CFLAGS := -Wall -O3
 CXXFLAGS := -std=c++0x -Wall -O3
 
@@ -27,11 +27,11 @@ tf.o: utility.h
 tf: tf.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
-idf_dic.o: utility.h utility_server_socket.h
+idf_dic.o: utility.h
 idf_dic: idf_dic.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
-w_to_vector.o: utility.h utility_client_socket.h
+w_to_vector.o: utility.h
 w_to_vector: w_to_vector.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
