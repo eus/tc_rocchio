@@ -15,8 +15,8 @@ MAIN_BEGIN(
 "| 8 bytes of double value in host endianness |\n"
 "+--------------------------------------------+\n"
 "in the following human-readable form:\n"
-"INPUT_FILE_NAME:( FLOATING_POINT_NUMBER)*\\n\n"
-"If there is only one file, `INPUT_FILE_NAME:' is not output.\n",
+"INPUT_FILE_NAME: (FLOATING_POINT_NUMBER( FLOATING_POINT_NUMBER)*)?\\n\n"
+"If there is only one file, `INPUT_FILE_NAME: ' is not output.\n",
 "",
 "",
 1,
@@ -33,7 +33,7 @@ MAIN_INPUT_START
   unsigned int count = 0;
 
   if (use_file_name) {
-    fprintf(out_stream, "%s:", in_stream_name);
+    fprintf(out_stream, "%s: ", in_stream_name);
   }
 
   while (1) {
@@ -41,7 +41,7 @@ MAIN_INPUT_START
     if (block_read == 0) {
       break;
     } else if (block_read == sizeof(vec_element)) {
-      fprintf(out_stream, " %f", vec_element);
+      fprintf(out_stream, "%s%f", count != 0 ? " " : "", vec_element);
     } else {
       if (count > 0) {
 	fprintf(out_stream, "\n");
