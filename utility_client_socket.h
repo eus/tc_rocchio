@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "utility.h"
+#include "utility_socket_common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,14 +43,7 @@ static int disconnect_server(struct client **c)
   struct client *client = *c;
 
   if (client->client_sock != -1) {
-    if (close(client->client_sock) != 0) {
-      print_syserror("Cannot close server socket");
-      rc = -1;
-    }
-    if (unlink(client->client_sock_name) != 0 && errno != ENOENT) {
-      print_syserror("Cannot unlink client socket");
-      rc = -1;
-    }
+    close_socket(client->client_sock, client->client_sock_name);
   }
 
   free (*c);
@@ -116,8 +110,8 @@ static struct client *connect_to_server(const char *server_address)
    
   return c;
 
- failed_2:
-  if (close(c->client_sock) != 0) {
+ failed_2:  
+  if (close_socket(c->client_sock, c->client_sock_name) != 0) {
     print_syserror("Cannot close failing socket");
   }
  failed_1:

@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include "utility.h"
+#include "utility_socket_common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,14 +26,7 @@ static int shutdown_server(struct server **s)
   struct server *server = *s;
 
   if (server->server_sock != -1) {
-    if (close(server->server_sock) != 0) {
-      print_syserror("Cannot close server socket");
-      rc = -1;
-    }
-    if (unlink(server->server_sock_name) != 0 && errno != ENOENT) {
-      print_syserror("Cannot unlink server socket");
-      rc = -1;
-    }
+    close_socket(server->server_sock, server->server_sock_name);
   }
 
   free(*s);
@@ -99,7 +93,7 @@ static struct server *setup_server(const char *server_address,
   return s;
 
  failed_3:
-  if (close(s->server_sock) != 0) {
+  if (close_socket(s->server_sock, s->server_sock_name) != 0) {
     print_syserror("Cannot close failing socket");
   }
  failed_2:

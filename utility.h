@@ -102,6 +102,12 @@
     exit (EXIT_FAILURE);			\
   } while (0)
 
+#define print_error(msg, ...)					\
+  do {								\
+    fatal_error_hdr();						\
+    fprintf(stderr, msg "\n", ## __VA_ARGS__);			\
+  } while (0)
+
 #define fatal_syserror(msg, ...)				\
   do {								\
     err_msg = strerror(errno);					\
@@ -122,7 +128,8 @@ extern "C" {
 #endif
 
 struct idf_reply_packet {
-  int entry_exists;
+  unsigned int entry_exists;
+  unsigned int pos;
   double idf;
 } __attribute__((packed));
 
@@ -164,19 +171,19 @@ static inline int load_next_text(char *buffer, size_t buffer_size)
  * - " 12 34 \n" [Test Case (TC) 2]
  * - "12  3" [Test Case (TC) 3]
  *
- * @delimiter the token delimiter
- * @buffer the tokenizing buffer allocated by the caller
- * @buffer_size the size of the tokenizing buffer
- * @partial_fn is called to process a token that can be incomplete
- * @complete_fn is called to indicate that one or more tokens passed to
+ * @param delimiter the token delimiter
+ * @param buffer the tokenizing buffer allocated by the caller
+ * @param buffer_size the size of the tokenizing buffer
+ * @param partial_fn is called to process a token that can be incomplete
+ * @param complete_fn is called to indicate that one or more tokens passed to
  * partial_fn forms one whole token.
  *
  * @return zero if the input stream is empty or non-zero otherwise.
  */
 static inline int tokenizer(const char *delimiter,
 			    char *buffer, size_t buffer_size,
-			    void (*partial_fn) (char *),
-			    void (*complete_fn) (void))
+			    void (*partial_fn)(char *),
+			    void (*complete_fn)(void))
 {
   char *f;
   int has_text;

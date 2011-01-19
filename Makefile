@@ -1,9 +1,11 @@
 .PHONY = all clean mrproper
 
-EXECUTABLES := tokenizer tf idf reader_2col streaming_tokenizer w
-OBJECTS := tokenizer.o tf.o idf.o reader_2col.o streaming_tokenizer.o w.o
+EXECUTABLES := tokenizer tf idf_dic reader_2col streaming_tokenizer \
+	w_to_vector reader_vec
+OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
+	w_to_vector.o reader_vec.o
 
-CPPFLAGS := -DBUFFER_SIZE=4096
+CPPFLAGS := -DBUFFER_SIZE=4096 -DRCV_TIMEOUT_MIN=100 -DRCV_TIMEOUT_MAX=1000
 CFLAGS := -Wall -O3
 CXXFLAGS := -std=c++0x -Wall -O3
 
@@ -18,16 +20,19 @@ streaming_tokenizer:
 reader_2col.o: utility.h
 reader_2col:
 
+reader_vec.o: utility.h
+reader_vec:
+
 tf.o: utility.h
 tf: tf.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
-idf.o: utility.h
-idf: idf.o
+idf_dic.o: utility.h utility_server_socket.h
+idf_dic: idf_dic.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
-w.o: utility.h
-w: w.o
+w_to_vector.o: utility.h utility_client_socket.h
+w_to_vector: w_to_vector.o
 	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
 clean:
