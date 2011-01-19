@@ -118,6 +118,7 @@ static int server_fn(int server_sock, ssize_t byte_rcvd,
 
 static unsigned long M = 0;
 static int server_only = 0;
+static int no_server = 0;
 MAIN_BEGIN(
 "idf_dic",
 "If input file is not given, stdin is read for input.\n"
@@ -150,9 +151,10 @@ MAIN_BEGIN(
 "If -s (i.e., server-only mode) is given, -M and -o are ignored and the input\n"
 "stream is expected to be in the format of the output above and only either\n"
 "stdin or a single input file is considered.\n"
-"At the end, this processing unit will become an online server serving\n"
-"request using Unix datagram socket. The socket will be located in the\n"
-"current working directory and is named `/idf_dic.socket'.\n"
+"At the end, if -n (i.e., no-server mode) is not given, this processing\n"
+"unit will become an online server serving request using Unix datagram\n"
+"socket. The socket will be located in the current working directory and is\n"
+"named `/idf_dic.socket'.\n"
 "The IDF or the position in the w vector of a word can be inquired by\n"
 "sending a datagram with the following structure:\n"
 "+------------------------+\n"
@@ -178,8 +180,8 @@ MAIN_BEGIN(
 "| The number of words in the dictionary in unsigned int (4 bytes) |\n"
 "+-----------------------------------------------------------------+\n"
 "The online server can be terminated by sending SIGINT signal.\n",
-"M:s",
-"(-M TOTAL_DOCUMENT_COUNT | -s)",
+"M:sn",
+"(-M TOTAL_DOCUMENT_COUNT [-n] | -s)",
 1,
 case 'M':
 M = strtoul(optarg, NULL, 10);
@@ -187,9 +189,15 @@ break;
 case 's':
 server_only = 1;
 break;
+case 'n':
+no_server = 1;
+break;
 ) {
   if (server_only) { // Only consider one input file
     multiple_input = 0;
+    if (no_server) {
+      fatal_error("-n cannot be used together with -s (-h for help)");
+    }
   } else {
     if (M == 0) { // Check that M is greater than 0
       fatal_error("%lu is invalid total document count (-h for help)", M);
@@ -319,6 +327,10 @@ MAIN_INPUT_END
       }
       out_stream = stdout;
     }
+  }
+
+  if (no_server) {
+    exit(EXIT_SUCCESS);
   }
 
   /* Setup server */
