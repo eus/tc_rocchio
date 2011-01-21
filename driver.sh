@@ -65,10 +65,12 @@ tokenizer=$exec_dir/tokenizer
 tf=$exec_dir/tf
 idf_dic=$exec_dir/idf_dic
 rocchio=$exec_dir/rocchio
+classifier=$exec_dir/classifier
 file_idf_dic=$result_dir/idf_dic.bin
 file_w_vectors=$result_dir/w_vectors.bin
 file_W_vectors=$result_dir/W_vectors.bin
 file_doc_cat=$result_dir/doc_cat.txt
+file_classification=$result_dir/classification.txt
 
 echo -n "0. Constructing temporary directory structure..."
 time if [ ! -d $result_dir ]; then
@@ -106,5 +108,8 @@ echo -n "4. DOC_CAT completion and W vectors generation..."
 time (sed -i -e 's%\(.*\)/.*%& \1%' $file_doc_cat \
     && $rocchio -D $file_doc_cat -p $f_selection_rate -o $file_W_vectors \
     $file_w_vectors )
+
+echo -n "5. Classifying the training set itself..."
+time $classifier -D $file_W_vectors -o $file_classification $file_w_vectors
 
 exit 0

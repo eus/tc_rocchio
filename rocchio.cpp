@@ -19,14 +19,12 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
-#include <csignal>
 #include <string>
 #include <list>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
-#include <unistd.h>
 #include "utility.h"
 #include "utility_vector.h"
 
@@ -89,7 +87,8 @@ static inline void vector_size_fn(unsigned int size)
   try {
     accumulator.reserve(size);
   } catch (length_error &e) {
-    fatal_error("No memory for profile vector W of %u dimension", size);
+    fatal_error("No memory for profile vector W of %u dimension"
+		" (try to program differently)", size);
   }
 
   accumulator.resize(size, 0);
@@ -153,20 +152,22 @@ MAIN_BEGIN(
 "| NULL-terminated doc_name_M | w_1_1 in double | ... | w_N_M in double |\n"
 "+----------------------------+-----------------+-----+-----------------+\n"
 "Logically, the file should come from a w_to_vector processing unit.\n"
-"The mandatory option -D specifies the name of DOC_CAT file specifying the\n"
-"categories of M documents given as input in the following format:\n"
+"The mandatory option -D specifies the name of DOC_CAT file containing the\n"
+"categories of M documents in the following format:\n"
 "DOC_NAME CAT_NAME\\n\n"
 "If a document name in the input cannot be found in the DOC_CAT file, it is\n"
 "a fatal error. However, DOC_NAME can be an empty word resulting in:\n"
 " CAT_NAME\\n\n"
 "to which doc_name in the form of empty string is assigned.\n"
 "Then, this processing unit will calculate the profile vector W of each\n"
-"category: W^c = <W^c_1, ..., W^c_N> where\n"
+"category using OVA (One-vs-All) approach: W^c = <W^c_1, ..., W^c_N> where\n"
 "               1                               p\n"
 "W^c_i = max{0,---(S over d in c of [w^d_i]) - ---(S over e in h of [w^e_i])}\n"
 "              |c|                             |h|\n"
 "where S means sum, |c| is the number of documents in category c,\n"
-"and |h| is the number of documents outside category c.\n"
+"and |h| is the number of documents outside category c. Since OVA is\n"
+"employed, h will be the set of all documents from all other categories\n"
+"beside category c.\n"
 "The feature selection rate p must not be negative.\n"
 "Finally, the result will be in the following binary format whose endianness\n"
 "follows that of the host machine:\n"

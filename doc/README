@@ -76,6 +76,8 @@ sys	2m5.164s
 
 * Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%.
 
+* Step 5. Classifying the training set itself takes 53.254s at CPU usage of 86.32%.
+
 2. On ohsumed-all (http://disi.unitn.it/moschitti/corpora/ohsumed-all-docs.tar.gz)
 
 * Step 1. Tokenization and TF calculation

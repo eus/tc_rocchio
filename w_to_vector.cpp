@@ -16,14 +16,12 @@
  *****************************************************************************/
 
 #include <unordered_map>
-#include <csignal>
 #include <string>
 #include <list>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
-#include <unistd.h>
 #include "utility.h"
 #include "utility_vector.h"
 

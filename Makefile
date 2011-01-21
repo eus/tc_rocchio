@@ -6,9 +6,9 @@ ARCHITECTURE_DEPENDENT_OPTIMIZATION := \
 endif
 
 C_EXECUTABLES := tokenizer  reader_2col streaming_tokenizer reader_vec
-CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio
+CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier
 OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
-	w_to_vector.o reader_vec.o rocchio.o
+	w_to_vector.o reader_vec.o rocchio.o classifier.o
 
 COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
 
@@ -37,6 +37,7 @@ tf.o: utility.h
 idf_dic.o: utility.h
 w_to_vector.o: utility.h utility_vector.h
 rocchio.o: utility.h utility_vector.h
+classifier.o: utility.h utility_vector.h
 
 clean:
 	-rm -- $(OBJECTS) > /dev/null 2>&1
