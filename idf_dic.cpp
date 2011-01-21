@@ -34,9 +34,12 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-static unordered_map<string, pair<unsigned int, double>> idf_list;
+typedef pair<unsigned int, double> class_idf_entry;
+typedef unordered_map<string, class_idf_entry> class_idf_list;
+static class_idf_list idf_list;
 static string word;
-static list<string> word_sorter;
+typedef list<string> class_word_sorter;
+static class_word_sorter word_sorter;
 
 static inline void partial_fn(char *f)
 {
@@ -73,10 +76,14 @@ MAIN_BEGIN(
 "the total number of documents, or equivalenty, the total number of connected\n"
 "TF processing units. This is needed to calculate the inverse document\n"
 "frequency (IDF).\n"
+"Then, this processing unit calculates the IDF of each word f as follows:\n"
+"                     M\n"
+"IDF(f) = log10 -------------\n"
+"               #doc_having_f\n"
 "Finally, the result will be in the following binary format whose endianness\n"
 "follows that of the host machine:\n"
 "+----------------------------------------------------------------+\n"
-"| Record count N in unsigned int (4 bytes)                       |\n"
+"| Vector count per record in unsigned int (4 bytes): always 1    |\n"
 "+--------------------------------------+-------------------------+\n"
 "| NULL-terminated sorted unique word 1 | IDF in double (8 bytes) |\n"
 "+--------------------------------------+-------------------------+\n"
@@ -112,7 +119,7 @@ MAIN_INPUT_END
 {
   /* If requested to write an output file, output the header */
   size_t block_write;
-  unsigned int count = idf_list.size();
+  unsigned int count = 1;
   block_write = fwrite(&count, sizeof(count), 1, out_stream);
   if (block_write == 0) {
     fatal_syserror("Cannot write to output stream");
@@ -127,11 +134,11 @@ MAIN_INPUT_END
   word_sorter.unique();
 
   unsigned int vec_at = 0;
-  for (list<string>::const_iterator i = word_sorter.begin();
+  for (class_word_sorter::iterator i = word_sorter.begin();
        i != word_sorter.end();
        ++i, ++vec_at) {
 
-    pair<unsigned int, double> &data = idf_list[*i];
+    class_idf_entry &data = idf_list[*i];
     data.first = vec_at;
     data.second = log10(static_cast<double>(M) / data.second);
 

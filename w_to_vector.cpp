@@ -25,6 +25,7 @@
 #include <cmath>
 #include <unistd.h>
 #include "utility.h"
+#include "utility_vector.h"
 
 using namespace std;
 
@@ -36,8 +37,13 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-static unordered_map<string, pair<unsigned int, double>> idf_list;
-static list<pair<string, double>> w_list;
+typedef pair<unsigned int, double> class_idf_entry;
+typedef unordered_map<string, class_idf_entry> class_idf_list;
+static class_idf_list idf_list;
+
+typedef pair<string, double> class_w_entry;
+typedef list<class_w_entry> class_w_list;
+static class_w_list w_list;
 static string word;
 
 static inline void partial_fn(char *f)
@@ -52,12 +58,34 @@ static inline void complete_fn(void)
   if (pos == -1) {
     fatal_error("%s is a malformed input", word.c_str());
   } else {
-    w_list.push_back(pair<string, double>
-		     (word.substr(0, pos),
-		      strtod(word.substr(pos + 1).c_str(), NULL)));
+    w_list.push_back(class_w_entry(word.substr(0, pos),
+				   strtod(word.substr(pos + 1).c_str(), NULL)));
   }
 
   word.clear();
+}
+
+static inline void string_partial_fn(char *str)
+{
+  word.append(str);
+}
+
+static inline void string_complete_fn(void)
+{
+}
+
+static unsigned int vector_position = 0;
+static inline void double_fn(unsigned int index, double value)
+{
+  if (index != 0) {
+    return;
+  }
+
+  class_idf_entry &data = idf_list[word];
+  data.first = vector_position++;
+  data.second = value;
+
+  word.clear(); 
 }
 
 static inline void load_idf_dic_file(const char *filename)
@@ -68,67 +96,8 @@ static inline void load_idf_dic_file(const char *filename)
     fatal_syserror("Cannot open IDF_DIC file %s", filename);
   }
 
-  size_t block_read;
-  unsigned int i = 0;
-  unsigned int count;
-  block_read = fread(&count, sizeof(count), 1, in_stream);
-  if (block_read == 0) {
-    fatal_error("Malformed input: cannot read record count");
-  }
-  if (count == 0) { // No record
-    exit(EXIT_SUCCESS);
-  }
-
-  unsigned int delta = 0;
-  double idf;
-  int idf_not_truncated = 1;
-  while (count > 0) {
-    block_read = fread(buffer, 1, BUFFER_SIZE - 1, in_stream);
-    if (block_read == 0) {
-      fatal_error("Malformed input: record count is less than stated");
-    }
-    buffer[BUFFER_SIZE - 1] = '\0'; // Prevent buffer overflow
-    unsigned int offset = 0;
-    while (count > 0) {
-      if (idf_not_truncated) {
-	word.append(buffer + offset);
-	offset += strlen(buffer + offset);
-	if (offset == block_read) { // Truncated word
-	  break;
-	}
-
-	offset++;
-
-	if (offset + sizeof(idf) > block_read) { // Truncated IDF
-	  delta = block_read - offset;
-	  memcpy(&idf, buffer + offset, delta);
-	  idf_not_truncated = 0;
-	  break;
-	}
-
-	memcpy(&idf, buffer + offset, sizeof(idf));
-	offset += sizeof(idf);
-      } else {
-	if (block_read + delta < sizeof(idf)) { // IDF is still truncated
-	  memcpy(reinterpret_cast<char *>(&idf) + delta, buffer, block_read);
-	  delta += block_read;
-	  break;
-	} else { // IDF can be completed now
-	  offset = sizeof(idf) - delta;
-	  memcpy(reinterpret_cast<char *>(&idf) + delta, buffer, offset);
-	  idf_not_truncated = 1;
-	}
-      }
-
-      pair<unsigned int, double> &data = idf_list[word];
-      data.first = i;
-      data.second = idf;
-
-      i++;
-      count--;
-      word.clear();
-    }
-  }
+  parse_vector(buffer, BUFFER_SIZE, NULL, string_partial_fn, string_complete_fn,
+	       double_fn);
 }
 
 MAIN_BEGIN(
@@ -141,30 +110,34 @@ MAIN_BEGIN(
 "each TF processing unit produces a list of unique words in a document.\n"
 "The mandatory option -D specifies the name of the IDF_DIC file generated\n"
 "by the idf_dic processing unit whose expected structure is as follows:\n"
-"+----------------------------------------------------------------+\n"
-"| Record count N in unsigned int (4 bytes)                       |\n"
-"+--------------------------------------+-------------------------+\n"
-"| NULL-terminated sorted unique word 1 | IDF in double (8 bytes) |\n"
-"+--------------------------------------+-------------------------+\n"
-"|                                ...                             |\n"
-"+--------------------------------------+-------------------------+\n"
-"| NULL-terminated sorted unique word N | IDF in double (8 bytes) |\n"
-"+--------------------------------------+-------------------------+\n"
-"The endianness of the binary data is expected to be that of the host machine\n"
-"Finally, the result will be in the following binary format whose endianness\n"
+"+-------------------------------------------------------------------+\n"
+"| Vector count per record in unsigned int (4 bytes): should be >= 1 |\n"
+"+--------------------------------------+----------------------------+\n"
+"| NULL-terminated sorted unique word 1 | IDF in double (8 bytes)    |\n"
+"+--------------------------------------+----------------------------+\n"
+"|                                ...                                |\n"
+"+--------------------------------------+----------------------------+\n"
+"| NULL-terminated sorted unique word N | IDF in double (8 bytes)    |\n"
+"+--------------------------------------+----------------------------+\n"
+"The binary data endianness is expected to be that of the host machine.\n"
+"Then, this processing unit will calculate the weight vector w of each\n"
+"document: w^d = <w^d_1, ..., w^d_N> where\n"
+"                        TF(i, d) * IDF(i)\n"
+"w^d_i = ----------------------------------------------------\n"
+"        sqrt( sum from j=1 to N of [ TF(j, d) * IDF(j) ]^2 )\n"
+"Finally, the result will have the following binary header whose endianness\n"
 "follows that of the host machine:\n"
-"+--------------------------+\n"
-"| NULL-terminated filename |\n"
-"+--------------------------+\n"
-"| w_1 in double (8 bytes)  |\n"
-"+--------------------------+\n"
-"|           ...            |\n"
-"+--------------------------+\n"
-"| w_N in double (8 bytes)  |\n"
-"+--------------------------+\n"
-"where N is the number of words in the dictionary produced by the idf_dic\n"
-"processing unit. The NULL-terminated filename is of length 0 when the input\n"
-"is stdin.\n"
+"+-----------------------------+\n"
+"| N in unsigned int (4 bytes) |\n"
+"+-----------------------------+\n"
+"where N is the number of words found in the IDF_DIC file (i.e., the size\n"
+"of each weight vector w).\n"
+"In continuation, for each file the following binary format whose endianness\n"
+"follows that of the host machine is constructed:\n"
+"+--------------------------+---------------+-----+---------------+\n"
+"| NULL-terminated filename | w_1 in double | ... | w_N in double |\n"
+"+--------------------------+---------------+-----+---------------+\n"
+"The NULL-terminated filename is of length 0 when the input is stdin.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, stdout is used to output binary data.\n",
 "D:",
@@ -180,31 +153,33 @@ if (buffer == NULL) {
 
 load_idf_dic_file(optarg);
 break;
-) {
+)
+
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
-}
+
+  const unsigned int dic_size = idf_list.size();
+  if (fwrite(&dic_size, sizeof(dic_size), 1, out_stream) == 0) {
+    fatal_syserror("Cannot write N to output stream");
+  }  
 MAIN_INPUT_START
 {
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 
   double normalizer = 0;
-  list<pair<unsigned int, double>> valid_w_list;
-  for (list<pair<string, double>>::iterator i = w_list.begin();
-       i != w_list.end();
-       ++i) {
+  list<class_idf_entry> valid_w_list;
+  for (class_w_list::iterator i = w_list.begin(); i != w_list.end(); i++) {
 
-    unordered_map<string, pair<unsigned int, double>>::iterator j
-      = idf_list.find(i->first);
+    class_idf_list::iterator j = idf_list.find(i->first);
 
-    if (j == idf_list.end()) {
+    if (j == idf_list.end()) { // Word is not in the dictionary
       continue;
     } else { // Calculation of a feature's weight
       unsigned int pos = j->second.first;
       double tf_idf = i->second * j->second.second;
 
-      valid_w_list.push_back(pair<unsigned int, double>(pos, tf_idf));
+      valid_w_list.push_back(class_idf_entry(pos, tf_idf));
       normalizer += tf_idf * tf_idf;
     }
   }
@@ -218,9 +193,9 @@ MAIN_INPUT_START
     fprintf(out_stream, "%s%c", in_stream_name, '\0');
   }
 
-  unsigned int dic_size = idf_list.size();
-  list<pair<unsigned int, double>>::iterator j = valid_w_list.begin();
+  list<class_idf_entry>::iterator j = valid_w_list.begin();
   for (unsigned int i = 0; i < dic_size; i++) {
+
     double weight = 0.0;
 
     if (i == j->first) { // This word exists in the input stream

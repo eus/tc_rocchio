@@ -1,15 +1,25 @@
 .PHONY = all clean mrproper
 
-EXECUTABLES := tokenizer tf idf_dic reader_2col streaming_tokenizer \
-	w_to_vector reader_vec
+ifeq ($(ONLY_FOR_ME),yes)
+ARCHITECTURE_DEPENDENT_OPTIMIZATION := \
+	-march=native -mfpmath=sse -malign-double -mmmx -msse -msse2 -msse3
+endif
+
+C_EXECUTABLES := tokenizer  reader_2col streaming_tokenizer reader_vec
+CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio
 OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
-	w_to_vector.o reader_vec.o
+	w_to_vector.o reader_vec.o rocchio.o
+
+COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
 
 CPPFLAGS := -DBUFFER_SIZE=4096
-CFLAGS := -Wall -O3
-CXXFLAGS := -std=c++0x -Wall -O3
+CFLAGS := $(COMMON_COMPILER_FLAGS)
+CXXFLAGS := -std=c++0x $(COMMON_COMPILER_FLAGS)
 
-all: $(EXECUTABLES)
+all: $(C_EXECUTABLES) $(CXX_EXECUTABLES)
+
+$(CXX_EXECUTABLES): %: %.o
+	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
 
 tokenizer.o: utility.h
 tokenizer:
@@ -24,19 +34,12 @@ reader_vec.o: utility.h
 reader_vec:
 
 tf.o: utility.h
-tf: tf.o
-	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
-
 idf_dic.o: utility.h
-idf_dic: idf_dic.o
-	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
-
-w_to_vector.o: utility.h
-w_to_vector: w_to_vector.o
-	$(CXX) -o $@ $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS)
+w_to_vector.o: utility.h utility_vector.h
+rocchio.o: utility.h utility_vector.h
 
 clean:
 	-rm -- $(OBJECTS) > /dev/null 2>&1
 
 mrproper: clean
-	-rm -- $(EXECUTABLES) > /dev/null 2>&1
+	-rm -- $(C_EXECUTABLES) $(CXX_EXECUTABLES) > /dev/null 2>&1

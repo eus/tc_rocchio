@@ -1,0 +1,87 @@
+See driver.sh on how to use the codebase.
+
+Below are some experiment results that I obtain using the following setup:
+1. A*Note Laptop (http://0x657573.wordpress.com/2010/12/12/finding-another-free-software-compatible-x86-laptop-anote/)
+* Intel Pentium Dual Core T3400 (1MB L2 cache, 2.16 GHz, 667 MHz FSB)
+* 2GB DDR2 RAM
+* Intel 965GM chipset, X3100GMA
+
+2. Software
+* GNU/Linux Ubuntu 9.04 operating system
+* GNU C Library 2.9
+* GCC 4.3.3
+
+3. Compilation
+* Using -O3 and -DBUFFER_SIZE=4096
+
+Experiment results:
+1. On Reuters21578-Apte-115Cat (http://disi.unitn.it/moschitti/corpora/Reuters21578-Apte-115Cat.tar.gz)
+
+* Step 1. Tokenization and TF calculation
+** Without parallelism,
+"$exec_dir"/tokenizer $cat/$file | "$exec_dir"/tf > "$result_dir"/$directory/$file.tf
+results in:
+real	1m33.018s
+user	0m31.930s
+sys	0m53.555s
+
+** With parallelism,
+( $exec_dir/tokenizer $cat/$file | $exec_dir/tf -o $result_dir/$directory/$file.tf) &
+results in:
+real	0m30.183s
+user	0m16.641s
+sys	0m33.690s
+
+** Using bash -c is slower as shown below.
+bash -c $exec_dir'/tokenizer '$cat/$file' | '$exec_dir'/tf -o '$result_dir/$directory/$file.tf &
+results in:
+real	0m53.261s
+user	0m37.258s
+sys	0m52.531s
+While
+
+** Combining tokenizer and tf into a single process results in 25% speed up.
+( "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf ) &
+real	0m22.627s
+user	0m11.625s
+sys	0m22.585s
+
+** Without parallelism, tokenizer and tf as one process is still poor.
+"$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf
+real	1m10.243s
+user	0m23.973s
+sys	0m43.395s
+
+** To conclude, parallelism is the way to go and piping surely incurs overhead that is justified by modifiability reason (e.g., adding stop list processing unit is very easy when pipe is used).
+
+* Step 2. IDF calculation and dictionary building takes the following time:
+real	0m4.641s
+user	0m3.648s
+sys	0m0.744s
+
+* Step 3. Generation of w vectors for all documents
+** Using socket in which idf_dic processing unit acts as a server and several w_to_vector processing units act as clients in which each w_to_vector processing unit takes care of only one document (see https://github.com/eus/tc_rocchio/commit/24b7db191e82d6d3f694dd6828b9cd7af0061e80),
+( $exec_dir/w_to_vector -D /tmp/tc_rocchio/idf_dic.socket -o $file.w $file ) &
+results in:
+real	3m21.748s
+user	1m34.854s
+sys	3m19.760s
+
+** If socket is removed and each w_to_vector processing unit loads IDF_DIC file directly, the IDF_DIC file load time is just too much as shown below.
+real	9m45.863s
+user	14m54.820s
+sys	2m5.164s
+
+** Using only one w_to_vector processing unit to load IDF_DIC file once and process all TF documents serially takes 138.011s at CPU usage of 38.31% which is 32% speed up. But, I notice that this processing unit does not have a stable performance. Last time it was around 178s. After that, it was around 150s. I think this is because the processing unit processes the input files one-by-one resulting in the OS scheduler disadvantaging this processing unit. Using thread to process each file may help improve performance.
+
+* Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%.
+
+2. On ohsumed-all (http://disi.unitn.it/moschitti/corpora/ohsumed-all-docs.tar.gz)
+
+* Step 1. Tokenization and TF calculation
+** With parallelism,
+( "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf ) &
+results in:
+real	1m53.594s
+user	1m0.616s
+sys	1m54.747s

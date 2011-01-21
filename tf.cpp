@@ -53,7 +53,7 @@ MAIN_BEGIN(
 "Then, the input stream is expected to contain words separated by a newline\n"
 "character (i.e., '\\n'). Logically the words should come from a single\n"
 "document since this is the semantic of TF (Term Frequency).\n"
-"Next, the occurence of every unique word is counted.\n"
+"Next, this processing unit counts the occurence of every unique word.\n"
 "The result takes the following form:\n"
 "UNIQUE_WORD WORD_COUNT\\n\n"
 "and the result is output to stdout if no output file is given. Otherwise,\n"

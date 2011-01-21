@@ -4,33 +4,25 @@
 CLEANUP_BEGIN
 CLEANUP_END
 
-static unsigned long M = 0;
 MAIN_BEGIN(
 "reader_vec",
-"Display the binary content of input file(s) having the following structure:\n"
-"+--------------------------------------------+\n"
-"| NULL-terminated string                     |\n"
-"+--------------------------------------------+\n"
-"| 8 bytes of double value in host endianness |\n"
-"+--------------------------------------------+\n"
-"|                     ...                    |\n"
-"+--------------------------------------------+\n"
-"| 8 bytes of double value in host endianness |\n"
-"+--------------------------------------------+\n"
+"Display the binary content of input file(s) having the following structure\n"
+"whose endianness expected to be that of the host machine:\n"
+"+------------------------------------------------------------------+\n"
+"| N in unsigned int (4 bytes)                                      |\n"
+"+------------------------+-----------------+-----+-----------------+\n"
+"| NULL-terminated string | w_1_1 in double | ... | w_N_1 in double |\n"
+"+------------------------+-----------------+-----+-----------------+\n"
+"|                               ...                                |\n"
+"+------------------------------------------------------------------+\n"
 "in the following human-readable form:\n"
 "INPUT_FILE_NAME: (STRING( FLOATING_POINT_NUMBER)*)?\\n\n"
 "If there is only one file, `INPUT_FILE_NAME: ' is not output.\n",
-"M:",
-"-M NUM_OF_DOUBLE_VALUES_PER_STRING",
+"",
+"",
 1,
-case 'M':
-M = strtoul(optarg, NULL, 10);
-break;
+NO_MORE_CASE
 )
-  if (M == 0) { // Check that M is greater than 0
-    fatal_error("Double values/string count must be specified (-h for help)");
-  }
-
   int use_file_name = 1;
   if (argv[optind] == NULL || argv[optind + 1] == NULL) { // Only one input file
     use_file_name = 0;
@@ -40,15 +32,25 @@ MAIN_INPUT_START
   double vec_element;
   size_t block_read;
   int c;
+  unsigned int M;
 
-  if (use_file_name) {
-    fprintf(out_stream, "%s: ", in_stream_name);
+  block_read = fread(&M, 1, sizeof(M), in_stream);
+  if (block_read == 0) { // Empty input stream
+    continue;
+  } else if (block_read != sizeof(M)) {
+    fatal_error("Input file %s has malformed structure: "
+		"corrupted vector size", in_stream_name);
   }
 
   while (1) {
+
     c = fgetc(in_stream);
     if (c == EOF) {
       break;
+    }
+
+    if (use_file_name) {
+      fprintf(out_stream, "%s: ", in_stream_name);
     }
 
     while (1) {
