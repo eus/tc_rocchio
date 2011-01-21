@@ -74,7 +74,6 @@ file_classification=$result_dir/classification.txt
 
 echo -n "0. Constructing temporary directory structure..."
 time if [ ! -d $result_dir ]; then
-sleep 1
     mkdir $result_dir \
     	&& cd $result_dir \
     	&& find $training_dir -mindepth 1 -maxdepth 1 -type d \
