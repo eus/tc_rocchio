@@ -27,7 +27,8 @@ using namespace std;
 
 static char *buffer = NULL;
 static double *W_vectors = NULL;
-static double *w_vector = NULL;
+static unsigned int W_vectors_count;
+static double *accumulator = NULL;
 CLEANUP_BEGIN
 {
   if (buffer != NULL) {
@@ -36,8 +37,8 @@ CLEANUP_BEGIN
   if (W_vectors != NULL) {
     free(W_vectors);
   }
-  if (w_vector != NULL) {
-    free(w_vector);
+  if (accumulator != NULL) {
+    free(accumulator);
   }
 } CLEANUP_END
 
@@ -47,6 +48,25 @@ static unsigned int vector_size;
 static inline void vector_size_fn(unsigned int size)
 {
   vector_size = size;
+
+  /* For storing W vectors as column vectors instead of row vectors to minimize
+   * page fault when doing swiping for dot product calculation because the
+   * number of categories is much less compared to the number of elements in
+   * a vector.
+   */
+  W_vectors = static_cast<double *>(malloc(sizeof(*W_vectors) * W_vectors_count
+					   * vector_size));
+  if (W_vectors == NULL) {
+    fatal_error("No memory to store all W vectors"
+		" (try to program differently)");
+  }
+
+  /* Create the accumulator and initialize it to zero */
+  accumulator = static_cast<double *>(malloc(sizeof(*accumulator)
+					     * W_vectors_count));
+  if (accumulator == NULL) {
+    fatal_error("No memory to create accumulator (try to program differently)");
+  }
 }
 
 string word;
@@ -65,18 +85,16 @@ static inline void double_fn(unsigned int index, double value)
 {
   static size_t offset = 0;
 
-  if (index == 0) {
-    double *b = static_cast<double *>(realloc(W_vectors,
-					      (sizeof(*W_vectors) * vector_size
-					       * cat_list.size())));
-    if (b == NULL) {
-      fatal_error("Insufficient memory to load all W vectors"
-		  " (try to program differently)");
-    }
-    W_vectors = b;
-  }
+  /* Store W vectors as column vectors instead of row vectors to minimize
+   * page fault when doing swiping for dot product calculation because the
+   * number of categories is much less compared to the number of elements in
+   * a vector.
+   */
+  W_vectors[offset + index * W_vectors_count] = value;
 
-  W_vectors[offset++] = value;
+  if (index + 1 == vector_size) {
+    offset++;
+  }
 }
 
 static inline void load_profile_file(char *filename)
@@ -96,8 +114,6 @@ static inline void vector_size_fn_dot(unsigned int size)
   if (size != vector_size) {
     fatal_error("w vector and W vector have different sizes");
   }
-
-  w_vector = static_cast<double *>(malloc(sizeof(*w_vector) * size));
 }
 
 static inline void string_partial_fn_dot(char *str)
@@ -110,38 +126,33 @@ static inline void string_complete_fn_dot(void)
   fprintf(out_stream, "%s ", word.c_str()); // Output document name
 
   word.clear();
+
+  memset(accumulator, 0, sizeof(*accumulator) * W_vectors_count);
 }
 
-static inline void double_fn_dot(unsigned int index, double value)
+static inline void double_fn_dot(unsigned int w_idx, double value)
 {
-  w_vector[index] = value;
+  for (unsigned int cat_idx = 0; cat_idx < W_vectors_count; cat_idx++) {
+    accumulator[cat_idx] += (W_vectors[cat_idx + w_idx * W_vectors_count]
+			     * value);
+  }
 
-  if (index + 1 == vector_size) { // All entries of w vector have been loaded
-    double max_dot_product = 0;
+  if (w_idx + 1 == vector_size) { // All entries of w vector have been processed
+
+    /* Output the highest category */
     int cat_idx = 0; // If all dot products are zero, just pick the first cat
-
-    /* Time to do dot product with W_vectors in one swipe in the hope of
-     * getting the maximum number of cache hits possible
-     */
-    unsigned int W_vectors_count = cat_list.size();
-    for (unsigned int i = 0; i < W_vectors_count; i++) {
-      double dot_product = 0;
-      size_t offset = i * vector_size;
-      for (unsigned int j = 0; j < vector_size; j++) {
-	dot_product += W_vectors[offset + j] * w_vector[j];
-      }
-
-      if (dot_product > max_dot_product) {
-	max_dot_product = dot_product;
+    double max_dot_product = accumulator[0];
+    for (unsigned int i = 1; i < W_vectors_count; i++) {      
+      if (max_dot_product < accumulator[i]) {
+	max_dot_product = accumulator[i];
 	cat_idx = i;
       }
     }
-
-    /* Output the highest category */
     fprintf(out_stream, "%s\n", cat_list[cat_idx].c_str());
   }
 }
 
+static char *profile_file_name;
 MAIN_BEGIN(
 "classifier",
 "If input file is not given, stdin is read for input.\n"
@@ -181,8 +192,8 @@ MAIN_BEGIN(
 "DOC_NAME CAT_NAME\\n\n"
 "The result is output to the given file if an output file is specified, or to\n"
 "stdout otherwise.\n",
-"D:",
-"-D PROFILE_FILE",
+"D:M:",
+"-D PROFILE_FILE -M CATEGORY_COUNT",
 0,
 case 'D':
 /* Allocating tokenizing buffer */
@@ -190,16 +201,27 @@ buffer = static_cast<char *>(malloc(BUFFER_SIZE));
 if (buffer == NULL) {
   fatal_error("Insufficient memory");
  }
+
+profile_file_name = optarg;
 /* End of allocation */
+break;
 
-load_profile_file(optarg);
-
+case 'M':
+W_vectors_count = strtoul(optarg, NULL, 10);
+if (W_vectors_count == 0) { // Cannot carry any dot product
+  exit(EXIT_SUCCESS);
+}
 break;
 
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
+  if (W_vectors_count == 0) {
+    fatal_error("-M must be specified (-h for help)");
+  }
+
+  load_profile_file(profile_file_name);
 }
 MAIN_INPUT_START
 {

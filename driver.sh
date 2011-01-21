@@ -110,6 +110,9 @@ time (sed -i -e 's%\(.*\)/.*%& \1%' $file_doc_cat \
     $file_w_vectors )
 
 echo -n "5. Classifying the training set itself..."
-time $classifier -D $file_W_vectors -o $file_classification $file_w_vectors
+time (
+    cat_count=`cut -d ' ' -f 2 $file_doc_cat | sort -u | wc -l`
+    $classifier -M $cat_count -D $file_W_vectors -o $file_classification \
+	$file_w_vectors )
 
 exit 0
