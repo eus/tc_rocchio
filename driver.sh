@@ -27,7 +27,7 @@ TIMEFORMAT=' [%3Rs at CPU usage of %P%%]'
 
 prog_name=driver.sh
 
-while getopts ht:r:x: option; do
+while getopts ht:r:x:p: option; do
     case $option in
 	t) training_dir=$OPTARG;;
 	r) result_dir=$OPTARG;;

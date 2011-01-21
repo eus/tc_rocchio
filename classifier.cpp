@@ -208,7 +208,7 @@ break;
 
 case 'M':
 W_vectors_count = strtoul(optarg, NULL, 10);
-if (W_vectors_count == 0) { // Cannot carry any dot product
+if (W_vectors_count == 0) { // Cannot carry out any dot product
   exit(EXIT_SUCCESS);
 }
 break;
