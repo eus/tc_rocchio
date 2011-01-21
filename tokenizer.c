@@ -32,7 +32,7 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-static char *delimiter = " ,.-;:?!()[]\"'{}\r\n\t\v";
+static char *delimiter = " ,.-;:?!<>()[]\"'{}\r\n\t\v";
 
 static inline void strtolower(char *s)
 {
@@ -68,7 +68,7 @@ MAIN_BEGIN(
 "C control characters like \\n can be included in the delimiter list by\n"
 "writing two hexadecimal digits preceded by a backslash like \\0a.\n"
 "If the delimiter list is not given, it defaults to:\n"
-", .-;:?!()[]\"'{}\\r\\n\\t\\v\n"
+", .-;:?!<>()[]\"'{}\\r\\n\\t\\v\n"
 "If no output file is specified, the token list is output to stdout.\n"
 "Otherwise, the token list is output to the specified file.\n"
 "[NOTE]: The tokens are normalized to lowercase letters.\n",
