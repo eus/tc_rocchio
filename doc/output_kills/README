@@ -1,0 +1,39 @@
+* The benchmark can be executed by the following steps:
+1. Uncompressing w_vectors.bin.bz2 to the current directory under name w_vectors.bin. The uncompressed size is 0.9 GB. If the current directory does not have the space to hold a file that big, extract it to another directory and make symbolic link with name w_vectors.bin in this directory to the extracted file.
+2. Executing the BASH shell script prove_output_kills.sh. If you modify any of the reader_vec_* program, it is advised to run the BASH test script small_w_vectors_for_test.sh.
+
+* For the following experiment results, the test environment is described in doc/README.
+
+1. Using different data structure for output buffering:
+** vector<pair<string, vector<double>>>
+reader_vec_1 : [4.412s at CPU usage of 97.01% with user/sys ratio of 5.564]
+** vector<pair<string, double *>>>
+reader_vec_2 : [4.433s at CPU usage of 97.18% with user/sys ratio of 6.638]
+** vector<string> and vector<vector<double>>
+reader_vec_3 : [4.380s at CPU usage of 97.62% with user/sys ratio of 6.321]
+** vector<string> and vector<double *>
+reader_vec_4 : [4.289s at CPU usage of 99.42% with user/sys ratio of 6.154]
+
+Conclusion: C++ high level data structures present negligible performance penalty.
+
+2. Using the same output buffering (i.e., reader_vec_N where N={1,2,3,4} has the same output buffering as reader_vec_{N+4}) but employing C file output to /dev/null:
+reader_vec_5: [60.427s at CPU usage of 99.39% with user/sys ratio of 78.449]
+reader_vec_6: [60.606s at CPU usage of 98.70% with user/sys ratio of 74.530]
+reader_vec_7: [124.004s at CPU usage of 95.11% with user/sys ratio of 73.271]
+reader_vec_8: [144.597s at CPU usage of 93.98% with user/sys ratio of 70.371]
+
+Conclusion: Output really kills. Aside from that, keeping data contiguous for outputting is highly recommended as can be seen that reader_vec{7,8} have poor performance although the use of C++ data structure can help in the case of reader_vec_7.
+
+3. Using the same output buffering (i.e., reader_vec_N where N={1,2,3,4} has the same output buffering as reader_vec_{N+8}) but employing C++ file output to /dev/null:
+reader_vec_9: [248.708s at CPU usage of 94.92% with user/sys ratio of 100.753]
+reader_vec_10: [248.756s at CPU usage of 95.00% with user/sys ratio of 109.436]
+reader_vec_11: [248.084s at CPU usage of 94.64% with user/sys ratio of 102.893]
+reader_vec_12: [254.190s at CPU usage of 93.56% with user/sys ratio of 76.819]
+
+Conclusion: C++ output performance is much poorer than that of C.
+
+4. Without output buffering but using C (reader_vec_13) and C++ (reader_vec_14) file outputs to /dev/null:
+reader_vec_13: [60.824s at CPU usage of 99.36% with user/sys ratio of 80.231]
+reader_vec_14: [112.626s at CPU usage of 98.91% with user/sys ratio of 115.526]
+
+Conclusion: Output buffering does not improve the performance of output operations and that using C's file output facility is better than using that of C++. In general, a good performance can be achieved by doing the most minimal number of output operations possible. And, if output operations have to be done, keeping the data in a contiguous memory for reading will help improve performance.

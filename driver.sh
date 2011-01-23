@@ -23,7 +23,7 @@
 # time (for num in 1 2 3; do sleep 1 & done) is wrong.
 # time (for num in 1 2 3; do sleep 1 & done; wait) is correct.
 
-TIMEFORMAT=' [%3Rs at CPU usage of %P%%]'
+TIMEFORMAT=' \[%3Rs at CPU usage of %P%% with user/sys ratio of `echo "scale=3; %3U/%3S;" | bc 2>/dev/null`\]'
 
 prog_name=driver.sh
 
@@ -72,6 +72,7 @@ file_W_vectors=$result_dir/W_vectors.bin
 file_doc_cat=$result_dir/doc_cat.txt
 file_classification=$result_dir/classification.txt
 
+function step_0 {
 echo -n "0. Constructing temporary directory structure..."
 time if [ ! -d $result_dir ]; then
     mkdir $result_dir \
@@ -80,7 +81,9 @@ time if [ ! -d $result_dir ]; then
     	| sed -e 's%.*/\(.*\)%\1%' \
     	| xargs mkdir
 fi
+}
 
+function step_1 {
 echo -n "1. Tokenization and TF calculation..."
 time ( for directory in `ls $result_dir`; do
     cat=$training_dir/$directory
@@ -89,29 +92,55 @@ time ( for directory in `ls $result_dir`; do
 	    | $tf -o $result_dir/$directory/$file.tf) &
     done
 done; wait )
+}
 
+function step_2 {
 echo -n "2. IDF calculation and DIC building..."
 time (
 doc_count=`find $result_dir -type f | wc -l`
 find $result_dir -type f -iname '*.tf' \
     | xargs cat \
     | $idf_dic -M $doc_count -o $file_idf_dic )
+}
 
+function step_3 {
 echo -n "3. w vectors and DOC_CAT generations..."
 time ( cd $result_dir \
     && ls */* \
     | tee $file_doc_cat \
     | xargs $exec_dir/w_to_vector -D $file_idf_dic -o $file_w_vectors )
+}
 
+function step_4 {
 echo -n "4. DOC_CAT completion and W vectors generation..."
 time (sed -i -e 's%\(.*\)/.*%& \1%' $file_doc_cat \
     && $rocchio -D $file_doc_cat -p $f_selection_rate -o $file_W_vectors \
     $file_w_vectors )
+}
 
+function step_5 {
 echo -n "5. Classifying the training set itself..."
 time (
     cat_count=`cut -d ' ' -f 2 $file_doc_cat | sort -u | wc -l`
     $classifier -M $cat_count -D $file_W_vectors -o $file_classification \
 	$file_w_vectors )
+}
+
+# The jujitsu of eval and sed is needed to pretty print the timing
+# information while preserving any error message. I assume that there is no
+# shell metacharacters in the timing line that needs to be escaped by sed to
+# avoid more complicated jujitsu of sed
+not_timing_line='/\\\[.*at CPU usage.*\\\]$/!'
+    timing_line='/\\\[.*at CPU usage.*\\\]$/' # just throwing `!' away
+for ((i = 0; i < 6; i++)); do
+    eval `step_$i \
+	2>&1 \
+	| sed \
+	-e "$not_timing_line s%'%'\\\\''%g" \
+	-e "$not_timing_line s%.*%echo '&';%" \
+	-e "$timing_line"' s%.*%echo &%'` \
+	| sed \
+	-e 's% with user/sys ratio of ]% with user/sys ratio of infinity]%'
+done
 
 exit 0

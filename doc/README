@@ -14,25 +14,84 @@ Below are some experiment results that I obtain using the following setup:
 3. Compilation
 * Using -O3 and -DBUFFER_SIZE=4096
 
+I measure the computation performance in terms of the processing time, the CPU usage and the ratio of the process's CPU seconds spent in user mode and in system mode (i.e., user/sys). While CPU usage can indicate how efficient a program does its calculation, a low (i.e., less than or equal to 1) user/sys ratio can indicate performance bottle-neck like doing output within a loop, frequent swapping to disk, frequent page fault, frequent user space to kernel space switching, which is rather expensive, and the like. On the other hand, having user/sys ratio nearing infinity does not always indicate a good performance because an intensive computation in the user space may hide the existence of the aforementioned performance bottle-necks (see doc/output_kills/README).
+
+I observe that performance really suffers when doing output but not when doing input. Beside this, I also observe that C file outputting facility (e.g., fprintf) has much better performance compared to that of C++ (e.g., doing `myfile << 0.2322;'). The details of the experiment that leads to this conclusion can be found in doc/output_kills/README.
+
+Due to not checking the return value of fprintf, I only discovered much later that processing unit w_to_vector actually could not output all weight vectors of all documents. Specifically, only 3,613 weight vectors were stored in w_vectors.bin to be processed by processing unit rocchio. This is because of file size limit of the operating systems. Since each weight vector has 32,002 elements and the total number of documents in the training set is 11,476, the minimum size of file w_vectors.bin is 8 bytes x 32,002 x 11,476 = 2,938,039,616 bytes, which is approximately 3 GB. However, because the weight vectors are sparse vectors, an efficient data structure and computation can be devised. As advised by Prof. Moschitti, the elements of a weight vector can be put in a binary search tree.
+
 Experiment results:
 1. On Reuters21578-Apte-115Cat (http://disi.unitn.it/moschitti/corpora/Reuters21578-Apte-115Cat.tar.gz)
 
-* Step 1. Tokenization and TF calculation
-** Without parallelism,
+* The performance of reference of implementation (ROI) provided by Prof. Moschitti:
+** Step 1. Tokenization using my tokenizer because ROI does not provide the tokenizer:
+time ( for directory in `ls $result_dir`; do
+    cat=$training_dir/$directory
+    for file in `ls $cat`; do
+ 	( $tokenizer $cat/$file \
+	    | sed -e 's%.*%'$file'\t&\t1\t1%' > $cat/$file.tok) &
+    done
+done; wait )
+
+time ( cd $result_dir \
+     && ( find $training_dir -mindepth 1 -maxdepth 1 -type d \
+     	  | sed -e 's%.*/\(.*\)%\1%' \
+     	  | xargs mkdir ) \
+     && ( for directory in `ls $result_dir`; do
+     	      cat=$training_dir/$directory
+	      for file in `ls $cat`; do
+	      	  ( $tokenizer $cat/$file \
+		    | sed -e 's%.*%'$file'\t&\t1\t1%' \
+		      > $result_dir/$directory/$file.tok ) &
+	      done
+	      wait
+	      cat $result_dir/$directory/*.tok \
+	      	  > $result_dir../clusteringCategories/$directory.le
+	  done ) \
+     && cd .. )
+results in 33.004s at CPU usage of 100.00% with user/sys ratio of 0.638.
+
+** Step 2. Lemma unification
+bin/TCF UNI -RCclusteringCategories
+takes 9.540s at CPU usage of 86.75% with user/sys ratio of 4.146.
+
+** Step 3. Building class centroids
+bin/TCF CCE -SP20 -SE1
+takes 13.390s at CPU usage of 96.47% with user/sys ratio of 7.409.
+
+** Step 4. Building global centroids
+bin/TCF GCE -DF0
+takes 0.306s at CPU usage of 94.26% with user/sys ratio of 23.000.
+
+** Step 5. Dictionary construction
+bin/TCF DIC -GA0
+takes 6.689s at CPU usage of 97.18% with user/sys ratio of 4.062.
+
+** Step 6. Classifying the 
+bin/TCF CLA -BP > BEP
+takes 1.809s at CPU usage of 94.64% with user/sys ratio of 5.028 and obtains:
+MacroAverage: Recall: 0.617557, Precision: 0.833793
+MicroAverage: Recall: 0.710041, Precision: 0.723382, f1: 0.716649
+
+** Total running time is 64.738s.
+
+* My implementation
+** Step 1. Tokenization and TF calculation takes 26.882s at CPU usage of 100.00% with user/sys ratio of 0.535. Below are some further experiments of different approaches:
+*** Without parallelism,
 "$exec_dir"/tokenizer $cat/$file | "$exec_dir"/tf > "$result_dir"/$directory/$file.tf
 results in:
 real	1m33.018s
 user	0m31.930s
 sys	0m53.555s
 
-** With parallelism,
+*** With parallelism,
 ( $exec_dir/tokenizer $cat/$file | $exec_dir/tf -o $result_dir/$directory/$file.tf) &
 results in:
 real	0m30.183s
 user	0m16.641s
 sys	0m33.690s
 
-** Using bash -c is slower as shown below.
+*** Using bash -c is slower as shown below.
 bash -c $exec_dir'/tokenizer '$cat/$file' | '$exec_dir'/tf -o '$result_dir/$directory/$file.tf &
 results in:
 real	0m53.261s
@@ -40,48 +99,46 @@ user	0m37.258s
 sys	0m52.531s
 While
 
-** Combining tokenizer and tf into a single process results in 25% speed up.
+*** Combining tokenizer and tf into a single process results in 25% speed up.
 ( "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf ) &
 real	0m22.627s
 user	0m11.625s
 sys	0m22.585s
 
-** Without parallelism, tokenizer and tf as one process is still poor.
+*** Without parallelism, tokenizer and tf as one process is still poor.
 "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf
 real	1m10.243s
 user	0m23.973s
 sys	0m43.395s
 
-** To conclude, parallelism is the way to go and piping surely incurs overhead that is justified by modifiability reason (e.g., adding stop list processing unit is very easy when pipe is used).
+*** To conclude, parallelism is the way to go and piping surely incurs overhead that is justified by modifiability reason (e.g., adding stop list processing unit is very easy when pipe is used).
 
-* Step 2. IDF calculation and dictionary building takes the following time:
-real	0m4.641s
-user	0m3.648s
-sys	0m0.744s
+** Step 2. IDF calculation and dictionary building takes 4.035s at CPU usage of 94.98% with user/sys ratio of 18.160. 
 
-* Step 3. Generation of w vectors for all documents
-** Using socket in which idf_dic processing unit acts as a server and several w_to_vector processing units act as clients in which each w_to_vector processing unit takes care of only one document (see https://github.com/eus/tc_rocchio/commit/24b7db191e82d6d3f694dd6828b9cd7af0061e80),
+** Step 3. Generation of w vectors for all documents takes 149.705s at CPU usage of 35.80% with user/sys ratio of 1.738. All 11,476 documents are processed but only 3,613 weight vectors are output due to file size limit in the operating system as described above. Below are some experiments of different approaches:
+*** Using socket in which idf_dic processing unit acts as a server and several w_to_vector processing units act as clients in which each w_to_vector processing unit takes care of only one document (see https://github.com/eus/tc_rocchio/commit/24b7db191e82d6d3f694dd6828b9cd7af0061e80),
 ( $exec_dir/w_to_vector -D /tmp/tc_rocchio/idf_dic.socket -o $file.w $file ) &
 results in:
 real	3m21.748s
 user	1m34.854s
 sys	3m19.760s
 
-** If socket is removed and each w_to_vector processing unit loads IDF_DIC file directly, the IDF_DIC file load time is just too much as shown below.
+*** If socket is removed and each w_to_vector processing unit loads IDF_DIC file directly, the IDF_DIC file load time is just too much as shown below.
 real	9m45.863s
 user	14m54.820s
 sys	2m5.164s
 
-** Using only one w_to_vector processing unit to load IDF_DIC file once and process all TF documents serially takes 138.011s at CPU usage of 38.31% which is 32% speed up. But, I notice that this processing unit does not have a stable performance. Last time it was around 178s. After that, it was around 150s. I think this is because the processing unit processes the input files one-by-one resulting in the OS scheduler disadvantaging this processing unit. Using thread to process each file may help improve performance.
+*** Using only one w_to_vector processing unit to load IDF_DIC file once and process all TF documents serially takes 138.011s at CPU usage of 38.31% which is 32% speed up. But, I notice that this processing unit does not have a stable performance. Last time it was around 178s. After that, it was around 150s. I think this is because the processing unit processes the input files one-by-one resulting in the OS scheduler disadvantaging this processing unit. Using thread to process each file may help improve performance.
 
-* Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%.
+** Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%. This can be fast because calculation can be skipped once an element is negative as permitted by max{0, ...}. Moreover, only 3,613 weight vectors are processed due to an error in the processing unit w_to_vector.
 
-* Step 5. Classifying the training set itself takes 34.625s at CPU usage of 96.78%.
+** Step 5. Classifying the training set itself takes 32.982s at CPU usage of 93.60% with user/sys ratio of 42.362. Although only 3,613 weight vectors are considered, this may be slow due to outputting and not harnessing sparse vectors.
 
 2. On ohsumed-all (http://disi.unitn.it/moschitti/corpora/ohsumed-all-docs.tar.gz)
 
-* Step 1. Tokenization and TF calculation
-** With parallelism,
+* My implementation
+** Step 1. Tokenization and TF calculation
+*** With parallelism,
 ( "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf ) &
 results in:
 real	1m53.594s
