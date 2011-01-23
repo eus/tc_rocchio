@@ -84,6 +84,10 @@ real	1m33.018s
 user	0m31.930s
 sys	0m53.555s
 
+*** With parallelism using `sed' as the tokenizer,
+( sed -e 's%[] ,.;:?!<>()["'\''{}\r\n\t\v-]%\n%g' $cat/$file | $tf -o $result_dir/$directory/$file.tf) &
+results in 40.681s at CPU usage of 100.00% with user/sys ratio of 0.620.
+
 *** With parallelism,
 ( $exec_dir/tokenizer $cat/$file | $exec_dir/tf -o $result_dir/$directory/$file.tf) &
 results in:
@@ -97,7 +101,6 @@ results in:
 real	0m53.261s
 user	0m37.258s
 sys	0m52.531s
-While
 
 *** Combining tokenizer and tf into a single process results in 25% speed up.
 ( "$exec_dir"/tok_tf $cat/$file > "$result_dir"/$directory/$file.tf ) &
