@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cmath>
 #include "utility.h"
+#include "utility.hpp"
 
 using namespace std;
 
@@ -59,26 +60,24 @@ static inline void complete_fn(void)
   word.clear();
 }
 
-static unsigned long M = 0;
 MAIN_BEGIN(
 "idf_dic",
-"If input file is not given, stdin is read for input.\n"
-"Otherwise, the input file(s) is read for input.\n"
-"Then, the input stream is expected to have the following form:\n"
+"If input file is not given, stdin is read for a list of paths of input files."
+"\n"
+"Otherwise, the input file is read for such a list.\n"
+"Then, the each of the file is expected to have the following form:\n"
 "WORD( FIELD)*\\n\n"
 "in which only WORD (i.e., the first field separated by space) matters.\n"
 "Logically, data should come from one or more TF processing unit in which\n"
 "each TF processing unit produces a list of unique words so that the number\n"
 "of duplicates of a word in the input stream can be taken as the number of\n"
 "documents having that particular word.\n"
-"The mandatory option -M specifies a positive non-zero integer specifying\n"
-"the total number of documents, or equivalenty, the total number of connected\n"
-"TF processing units. This is needed to calculate the inverse document\n"
-"frequency (IDF).\n"
 "Then, this processing unit calculates the IDF of each word f as follows:\n"
 "                     M\n"
 "IDF(f) = log10 -------------\n"
 "               #doc_having_f\n"
+"Where M specifies the total number of paths (i.e., one document/path) in\n"
+"the input stream.\n"
 "Finally, the result will be in the following binary format whose endianness\n"
 "follows that of the host machine:\n"
 "+----------------------------------------------------------+\n"
@@ -96,16 +95,13 @@ MAIN_BEGIN(
 "IDF_i is a double (8 bytes) datum whose value is the IDF of word i.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, the binary output is output to stdout.\n",
-"M:",
-"-M TOTAL_DOCUMENT_COUNT",
-1,
-case 'M':
-M = strtoul(optarg, NULL, 10);
-break;
-) {
-  if (M == 0) { // Check that M is greater than 0
-    fatal_error("%lu is invalid total document count (-h for help)", M);
-  }
+"",
+"",
+0,
+NO_MORE_CASE
+)
+
+  unsigned long M = 0;
 
   /* Allocating tokenizing buffer */
   buffer = static_cast<char *>(malloc(BUFFER_SIZE));
@@ -113,11 +109,14 @@ break;
     fatal_error("Insufficient memory");
   }
   /* End of allocation */
-}
+
 MAIN_INPUT_START
+MAIN_LIST_OF_FILE_START
 {
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
+  M++;
 }
+MAIN_LIST_OF_FILE_END
 MAIN_INPUT_END
 {
   /* If requested to write an output file, output the header */

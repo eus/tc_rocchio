@@ -60,17 +60,9 @@
 
 #define MAIN_INPUT_START						\
   do {									\
+    recover_stdin_from_options_processing();				\
     if (argv[optind] != NULL) {						\
-      if (in_stream != stdin) {						\
-	if (fclose(in_stream) != 0) {					\
-	  fatal_syserror("Cannot close input %s", in_stream_name);	\
-	}								\
-      }									\
-      in_stream = fopen(argv[optind], "r");				\
-      if (in_stream == NULL) {						\
-	fatal_syserror("Cannot open input %s for reading", argv[optind]); \
-      }									\
-      in_stream_name = argv[optind];					\
+      open_in_stream(argv[optind]);					\
       optind++;								\
     }
  
@@ -139,6 +131,36 @@ static FILE *in_stream = NULL;
 static const char *in_stream_name = NULL;
 static char *err_msg = NULL;
 static int multiple_input = 0;
+
+/* When people use in_stream during options processing, they should have
+ * restored it back to the original state. But, doing so manually is
+ * unproductive.
+ */
+static inline void recover_stdin_from_options_processing(void)
+{
+  if (in_stream != stdin) {
+    if (fclose(in_stream) != 0) {
+      fatal_syserror("Cannot close input %s", in_stream_name);
+    }
+
+    in_stream = stdin;
+    in_stream_name = NULL;
+  }
+}
+
+static inline void open_in_stream(const char *path)
+{
+  if (in_stream != stdin) {
+    if (fclose(in_stream) != 0) {
+      fatal_syserror("Cannot close input %s", in_stream_name);
+    }
+  }
+  in_stream_name = path;
+  in_stream = fopen(in_stream_name, "r");
+  if (in_stream == NULL) {
+    fatal_syserror("Cannot open input %s for reading", in_stream_name);
+  }
+}
 
 /**
  * @return zero if nothing is read from input stream or non-zero otherwise

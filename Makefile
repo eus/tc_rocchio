@@ -12,7 +12,7 @@ OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
 
 COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
 
-CPPFLAGS := -DBUFFER_SIZE=4096
+CPPFLAGS := -DBUFFER_SIZE=4096 -DOS_PATH_DELIMITER=\'/\'
 CFLAGS := $(COMMON_COMPILER_FLAGS)
 CXXFLAGS := -std=c++0x $(COMMON_COMPILER_FLAGS)
 
@@ -34,8 +34,8 @@ reader_vec.o: utility.h
 reader_vec:
 
 tf.o: utility.h
-idf_dic.o: utility.h
-w_to_vector.o: utility.h utility_vector.h
+idf_dic.o: utility.h utility.hpp
+w_to_vector.o: utility.h utility.hpp utility_vector.h
 rocchio.o: utility.h utility_vector.h utility.hpp
 classifier.o: utility.h utility_vector.h utility.hpp
 

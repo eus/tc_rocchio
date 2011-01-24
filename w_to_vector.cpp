@@ -25,6 +25,7 @@
 #include <cmath>
 #include "utility.h"
 #include "utility_vector.h"
+#include "utility.hpp"
 
 using namespace std;
 
@@ -66,7 +67,7 @@ static inline void complete_fn(void)
 
   word.clear();
 }
-
+      
 static inline void vector_size_fn(unsigned int size)
 {
 }
@@ -114,9 +115,10 @@ typedef unordered_set<string> class_processed_doc_list;
 class_processed_doc_list processed_doc_list;
 MAIN_BEGIN(
 "w_to_vector",
-"If input file is not given, stdin is read for input.\n"
-"Otherwise, the input file(s) is read for input.\n"
-"Then, the input stream is expected to have the following form:\n"
+"If input file is not given, stdin is read for a list of paths of input files."
+"\n"
+"Otherwise, the input file is read for such a list.\n"
+"Then, each of the file in the list is expected to have the following form:\n"
 "WORD WORD_COUNT\\n\n"
 "Logically, each file should come from a TF processing unit in which\n"
 "each TF processing unit produces a list of unique words in a document.\n"
@@ -151,7 +153,6 @@ MAIN_BEGIN(
 "+--------------------------+---+-------+-----+-----+-------+-----+\n"
 "| NULL-terminated filename | Q | off_1 | w_1 | ... | off_Q | w_Q |\n"
 "+--------------------------+---+-------+-----+-----+-------+-----+\n"
-"The NULL-terminated filename is of length 0 when the input is stdin.\n"
 "Q is an unsigned int datum (4 bytes) expressing the number of offset-element\n"
 "pairs.\n"
 "off_i is an unsigned int datum (4 bytes) expressing the offset of an element"
@@ -161,12 +162,12 @@ MAIN_BEGIN(
 "A duplicated document name is regarded as one document assigned to more than\n"
 "one category, and therefore, only the first document will be taken into\n"
 "account because the duplicates are assumed to be the copy of the first\n "
-"document and so will have the same vector representation w."
+"document and so will have the same vector representation w.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, stdout is used to output binary data.\n",
 "D:",
 "-D IDF_DIC_FILE",
-1,
+0,
 case 'D':
 /* Allocating tokenizing buffer */
 buffer = static_cast<char *>(malloc(BUFFER_SIZE));
@@ -191,12 +192,23 @@ break;
   list<class_idf_entry> valid_w_list;
 
 MAIN_INPUT_START
+MAIN_LIST_OF_FILE_START
 {
+  /* Handle documents in multiple categories */
+  unsigned int pos = file_path->find_last_of(OS_PATH_DELIMITER);
+  if (pos == file_path->length()) { // Assume no directory in the path
+    pos = 0;
+  } else {
+    pos++;
+  }
+  const string &doc_name = file_path->substr(pos);
   class_processed_doc_list::iterator exists
-    = processed_doc_list.find(in_stream_name);
+    = processed_doc_list.find(doc_name);
   if (exists != processed_doc_list.end()) { // Skip already processed doc
     continue;
   }
+  processed_doc_list.insert(doc_name);
+  /* End of handling documents in multiple categories */
 
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 
@@ -219,11 +231,7 @@ MAIN_INPUT_START
 
   valid_w_list.sort();
 
-  if (in_stream_name == NULL) {
-    fprintf(out_stream, "%c", '\0');
-  } else {
-    fprintf(out_stream, "%s%c", in_stream_name, '\0');
-  }
+  fprintf(out_stream, "%s%c", doc_name.c_str(), '\0');
 
   unsigned int offset_count = valid_w_list.size();
   if (fwrite(&offset_count, sizeof(offset_count), 1, out_stream) == 0) {
@@ -245,8 +253,7 @@ MAIN_INPUT_START
   valid_w_list.clear();
   w_list.clear();
   word.clear();
-
-  processed_doc_list.insert(in_stream_name);
 }
+MAIN_LIST_OF_FILE_END
 MAIN_INPUT_END
 MAIN_END

@@ -134,7 +134,7 @@ static inline void double_fn(unsigned int index, double value)
   }
 }
 
-static double f_selection_rate;
+static double f_selection_rate = -1;
 MAIN_BEGIN(
 "rocchio",
 "If input file is not given, stdin is read for input.\n"
@@ -216,6 +216,9 @@ break;
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
+  }
+  if (f_selection_rate < 0) {
+    fatal_error("-p must be specified (-h for help)");
   }
 }
 MAIN_INPUT_START

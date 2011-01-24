@@ -49,10 +49,11 @@ Do not use any path name having shell special characters or whitespaces.
 Available steps:
     0. Constructing temporary directory structure
     1. Tokenization and TF calculation
-    2. IDF calculation and DIC building
-    3. w vectors and DOC_CAT generations
-    4. DOC_CAT completion and W vectors generation
-    5. Classifying the training set itself
+    2. DOC and DOC_CAT files generation
+    3. IDF calculation and DIC building
+    4. w vectors and DOC_CAT generations
+    5. DOC_CAT completion and W vectors generation
+    6. Classifying the training set itself
 EOF
     esac
 done
@@ -76,18 +77,20 @@ if [ x$from_step == x ]; then
     from_step=0;
 fi
 if [ x$to_step == x ]; then
-    to_step=5;
+    to_step=6;
 fi
 
 tokenizer=$exec_dir/tokenizer
 tf=$exec_dir/tf
 idf_dic=$exec_dir/idf_dic
+w_to_vector=$exec_dir/w_to_vector
 rocchio=$exec_dir/rocchio
 classifier=$exec_dir/classifier
 file_idf_dic=$result_dir/idf_dic.bin
 file_w_vectors=$result_dir/w_vectors.bin
 file_W_vectors=$result_dir/W_vectors.bin
 file_doc_cat=$result_dir/doc_cat.txt
+file_doc=$result_dir/doc.txt
 file_classification=$result_dir/classification.txt
 
 function step_0 {
@@ -103,45 +106,42 @@ function step_0 {
 
 function step_1 {
     echo -n "1. Tokenization and TF calculation..."
-    time ( for directory in `ls $result_dir`; do
+    time (for directory in `ls $result_dir`; do
 	cat=$training_dir/$directory
 	for file in `ls $cat`; do
- 	    ( $tokenizer $cat/$file \
-		| $tf -o $result_dir/$directory/$file.tf) &
+ 	    ($tokenizer $cat/$file \
+		| $tf -o $result_dir/$directory/$file) &
 	done
-    done; wait )
+    done; wait)
 }
 
 function step_2 {
-    echo -n "2. IDF calculation and DIC building..."
-    time (
-	doc_count=`find $result_dir -type f | wc -l`
-	find $result_dir -type f -iname '*.tf' \
-	    | xargs -x cat \
-	    | $idf_dic -M $doc_count -o $file_idf_dic )
+    echo -n "2. DOC and DOC_CAT files generation..."
+    time (find $result_dir -mindepth 2 -type f \
+	| tee $file_doc \
+	| sed -e 's%'$result_dir'/\(.*\)/\(.*\)%\2 \1%' > $file_doc_cat)
 }
 
 function step_3 {
-    echo -n "3. w vectors and DOC_CAT generations..."
-    time ( cd $result_dir \
-	&& ls */* \
-	| tee $file_doc_cat \
-	| xargs -x $exec_dir/w_to_vector -D $file_idf_dic -o $file_w_vectors )
+    echo -n "3. IDF calculation and DIC building..."
+    time ($idf_dic -o $file_idf_dic $file_doc)
 }
 
 function step_4 {
-    echo -n "4. DOC_CAT completion and W vectors generation..."
-    time (sed -i -e 's%\(.*\)/.*%& \1%' $file_doc_cat \
-	&& $rocchio -D $file_doc_cat -p $f_selection_rate -o $file_W_vectors \
-	$file_w_vectors )
+    echo -n "4. w vectors generation..."
+    time ($w_to_vector -D $file_idf_dic -o $file_w_vectors $file_doc)
 }
 
 function step_5 {
-    echo -n "5. Classifying the training set itself..."
-    time (
-	cat_count=`cut -d ' ' -f 2 $file_doc_cat | sort -u | wc -l`
-	$classifier -M $cat_count -D $file_W_vectors -o $file_classification \
-	    $file_w_vectors )
+    echo -n "5. W vectors generation..."
+    time ($rocchio -D $file_doc_cat -p $f_selection_rate -o $file_W_vectors \
+	$file_w_vectors)
+}
+
+function step_6 {
+    echo -n "6. Classifying the training set itself..."
+    time ($classifier -D $file_W_vectors -o $file_classification \
+	$file_w_vectors)
 }
 
 # The jujitsu of eval and sed is needed to pretty print the timing
