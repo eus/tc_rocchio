@@ -127,6 +127,11 @@
 extern "C" {
 #endif
 
+struct sparse_vector_entry {
+  unsigned int offset;
+  double value;
+} __attribute__((packed));
+
 static const char *prog_name;
 static FILE *out_stream = NULL;
 static const char *out_stream_name = NULL;

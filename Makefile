@@ -36,8 +36,8 @@ reader_vec:
 tf.o: utility.h
 idf_dic.o: utility.h
 w_to_vector.o: utility.h utility_vector.h
-rocchio.o: utility.h utility_vector.h
-classifier.o: utility.h utility_vector.h
+rocchio.o: utility.h utility_vector.h utility.hpp
+classifier.o: utility.h utility_vector.h utility.hpp
 
 clean:
 	-rm -- $(OBJECTS) > /dev/null 2>&1

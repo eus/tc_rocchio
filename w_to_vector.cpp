@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.     *
  *****************************************************************************/
 
+#include <unordered_set>
 #include <unordered_map>
 #include <string>
 #include <list>
@@ -56,11 +57,18 @@ static inline void complete_fn(void)
   if (pos == -1) {
     fatal_error("%s is a malformed input", word.c_str());
   } else {
-    w_list.push_back(class_w_entry(word.substr(0, pos),
-				   strtod(word.substr(pos + 1).c_str(), NULL)));
+    w_list.push_back(class_w_entry());
+
+    class_w_entry &e = w_list.back();
+    e.first.append(word.substr(0, pos));
+    e.second = strtod(word.substr(pos + 1).c_str(), NULL);
   }
 
   word.clear();
+}
+
+static inline void vector_size_fn(unsigned int size)
+{
 }
 
 static inline void string_partial_fn(char *str)
@@ -69,6 +77,10 @@ static inline void string_partial_fn(char *str)
 }
 
 static inline void string_complete_fn(void)
+{
+}
+
+static inline void offset_count_fn(unsigned int count)
 {
 }
 
@@ -94,10 +106,12 @@ static inline void load_idf_dic_file(const char *filename)
     fatal_syserror("Cannot open IDF_DIC file %s", filename);
   }
 
-  parse_vector(buffer, BUFFER_SIZE, NULL, string_partial_fn, string_complete_fn,
-	       double_fn);
+  parse_vector(buffer, BUFFER_SIZE, vector_size_fn, string_partial_fn,
+	       string_complete_fn, offset_count_fn, double_fn);
 }
 
+typedef unordered_set<string> class_processed_doc_list;
+class_processed_doc_list processed_doc_list;
 MAIN_BEGIN(
 "w_to_vector",
 "If input file is not given, stdin is read for input.\n"
@@ -108,16 +122,20 @@ MAIN_BEGIN(
 "each TF processing unit produces a list of unique words in a document.\n"
 "The mandatory option -D specifies the name of the IDF_DIC file generated\n"
 "by the idf_dic processing unit whose expected structure is as follows:\n"
-"+-------------------------------------------------------------------+\n"
-"| Vector count per record in unsigned int (4 bytes): should be >= 1 |\n"
-"+--------------------------------------+----------------------------+\n"
-"| NULL-terminated sorted unique word 1 | IDF in double (8 bytes)    |\n"
-"+--------------------------------------+----------------------------+\n"
-"|                                ...                                |\n"
-"+--------------------------------------+----------------------------+\n"
-"| NULL-terminated sorted unique word N | IDF in double (8 bytes)    |\n"
-"+--------------------------------------+----------------------------+\n"
+"+----------------------------------------------------------+\n"
+"| Normal vector size of the sparse vector in unsigned int  |\n"
+"| (4 bytes): should be 1                                   |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"| NULL-terminated sorted unique word 1 | Q | off_1 | IDF_1 |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"|                             ...                          |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"| NULL-terminated sorted unique word N | Q | off_N | IDF_N |\n"
+"+--------------------------------------+---+-------+-------+\n"
 "The binary data endianness is expected to be that of the host machine.\n"
+"Q is an unsigned int (4 bytes) datum whose value should be 1.\n"
+"off_i is an unsigned int (4 bytes) datum whose value must be 0.\n"
+"IDF_i is a double (8 bytes) datum whose value should be the IDF of word i.\n"
 "Then, this processing unit will calculate the weight vector w of each\n"
 "document: w^d = <w^d_1, ..., w^d_N> where\n"
 "                        TF(i, d) * IDF(i)\n"
@@ -125,17 +143,25 @@ MAIN_BEGIN(
 "        sqrt( sum from j=1 to N of [ TF(j, d) * IDF(j) ]^2 )\n"
 "Finally, the result will have the following binary header whose endianness\n"
 "follows that of the host machine:\n"
-"+-----------------------------+\n"
-"| N in unsigned int (4 bytes) |\n"
-"+-----------------------------+\n"
-"where N is the number of words found in the IDF_DIC file (i.e., the size\n"
-"of each weight vector w).\n"
-"In continuation, for each file the following binary format whose endianness\n"
-"follows that of the host machine is constructed:\n"
-"+--------------------------+---------------+-----+---------------+\n"
-"| NULL-terminated filename | w_1 in double | ... | w_N in double |\n"
-"+--------------------------+---------------+-----+---------------+\n"
+"+--------------------------------------------------------------------+\n"
+"| Normal vector size of the sparse vector in unsigned int (4 bytes)  |\n"
+"+--------------------------------------------------------------------+\n"
+"In continuation, for each file the following binary format of sparse vector\n"
+"whose endianness follows that of the host machine is output:\n"
+"+--------------------------+---+-------+-----+-----+-------+-----+\n"
+"| NULL-terminated filename | Q | off_1 | w_1 | ... | off_Q | w_Q |\n"
+"+--------------------------+---+-------+-----+-----+-------+-----+\n"
 "The NULL-terminated filename is of length 0 when the input is stdin.\n"
+"Q is an unsigned int datum (4 bytes) expressing the number of offset-element\n"
+"pairs.\n"
+"off_i is an unsigned int datum (4 bytes) expressing the offset of an element"
+"\n"
+"within a vector.\n"
+"w_j is a double datum (8 bytes) expressing the entry at position off_j.\n"
+"A duplicated document name is regarded as one document assigned to more than\n"
+"one category, and therefore, only the first document will be taken into\n"
+"account because the duplicates are assumed to be the copy of the first\n "
+"document and so will have the same vector representation w."
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, stdout is used to output binary data.\n",
 "D:",
@@ -159,14 +185,22 @@ break;
 
   const unsigned int dic_size = idf_list.size();
   if (fwrite(&dic_size, sizeof(dic_size), 1, out_stream) == 0) {
-    fatal_syserror("Cannot write N to output stream");
-  }  
+    fatal_syserror("Cannot write normal vector size to output stream");
+  }
+
+  list<class_idf_entry> valid_w_list;
+
 MAIN_INPUT_START
 {
+  class_processed_doc_list::iterator exists
+    = processed_doc_list.find(in_stream_name);
+  if (exists != processed_doc_list.end()) { // Skip already processed doc
+    continue;
+  }
+
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 
   double normalizer = 0;
-  list<class_idf_entry> valid_w_list;
   for (class_w_list::iterator i = w_list.begin(); i != w_list.end(); i++) {
 
     class_idf_list::iterator j = idf_list.find(i->first);
@@ -191,24 +225,28 @@ MAIN_INPUT_START
     fprintf(out_stream, "%s%c", in_stream_name, '\0');
   }
 
-  list<class_idf_entry>::iterator j = valid_w_list.begin();
-  for (unsigned int i = 0; i < dic_size; i++) {
+  unsigned int offset_count = valid_w_list.size();
+  if (fwrite(&offset_count, sizeof(offset_count), 1, out_stream) == 0) {
+    fatal_syserror("Cannot write offset count to output stream");
+  }
 
-    double weight = 0.0;
+  struct sparse_vector_entry entry;  
+  for (list<class_idf_entry>::iterator i = valid_w_list.begin();
+       i != valid_w_list.end(); i++) {
 
-    if (i == j->first) { // This word exists in the input stream
-      weight = j->second / normalizer;
+    entry.offset = i->first;
+    entry.value = i->second / normalizer;
 
-      j++;
-    }
-
-    if (fwrite(&weight, sizeof(weight), 1, out_stream) == 0) {
+    if (fwrite(&entry, sizeof(entry), 1, out_stream) == 0) {
       fatal_syserror("Cannot write weight to output stream");
     }
   }
 
+  valid_w_list.clear();
   w_list.clear();
   word.clear();
+
+  processed_doc_list.insert(in_stream_name);
 }
 MAIN_INPUT_END
 MAIN_END

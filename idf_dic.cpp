@@ -34,8 +34,7 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-typedef pair<unsigned int, double> class_idf_entry;
-typedef unordered_map<string, class_idf_entry> class_idf_list;
+typedef unordered_map<string, unsigned int> class_idf_list;
 static class_idf_list idf_list;
 static string word;
 typedef list<string> class_word_sorter;
@@ -54,7 +53,7 @@ static inline void complete_fn(void)
     word = word.substr(0, pos);
   }
 
-  idf_list[word].second += 1;
+  idf_list[word] += 1;
   word_sorter.push_back(word);
 
   word.clear();
@@ -82,15 +81,19 @@ MAIN_BEGIN(
 "               #doc_having_f\n"
 "Finally, the result will be in the following binary format whose endianness\n"
 "follows that of the host machine:\n"
-"+----------------------------------------------------------------+\n"
-"| Vector count per record in unsigned int (4 bytes): always 1    |\n"
-"+--------------------------------------+-------------------------+\n"
-"| NULL-terminated sorted unique word 1 | IDF in double (8 bytes) |\n"
-"+--------------------------------------+-------------------------+\n"
-"|                                ...                             |\n"
-"+--------------------------------------+-------------------------+\n"
-"| NULL-terminated sorted unique word N | IDF in double (8 bytes) |\n"
-"+--------------------------------------+-------------------------+\n"
+"+----------------------------------------------------------+\n"
+"| Normal vector size of the sparse vector in unsigned int  |\n"
+"| (4 bytes): always 1                                      |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"| NULL-terminated sorted unique word 1 | Q | off_1 | IDF_1 |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"|                             ...                          |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"| NULL-terminated sorted unique word N | Q | off_N | IDF_N |\n"
+"+--------------------------------------+---+-------+-------+\n"
+"Q is an unsigned int (4 bytes) datum whose value is 1.\n"
+"off_i is an unsigned int (4 bytes) datum whose value is 0.\n"
+"IDF_i is a double (8 bytes) datum whose value is the IDF of word i.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, the binary output is output to stdout.\n",
 "M:",
@@ -122,7 +125,7 @@ MAIN_INPUT_END
   unsigned int count = 1;
   block_write = fwrite(&count, sizeof(count), 1, out_stream);
   if (block_write == 0) {
-    fatal_syserror("Cannot write to output stream");
+    fatal_syserror("Cannot write normal vector size to output stream");
   }
 
   /* End of outputting header */
@@ -133,20 +136,26 @@ MAIN_INPUT_END
   word_sorter.sort();
   word_sorter.unique();
 
-  unsigned int vec_at = 0;
+  struct output {
+    unsigned int Q;
+    struct sparse_vector_entry e;
+  } __attribute__((packed));
+
+  struct output o;
+  o.Q = 1;
+  o.e.offset = 0;
   for (class_word_sorter::iterator i = word_sorter.begin();
        i != word_sorter.end();
-       ++i, ++vec_at) {
-
-    class_idf_entry &data = idf_list[*i];
-    data.first = vec_at;
-    data.second = log10(static_cast<double>(M) / data.second);
+       ++i) {
 
     block_write = fwrite(i->c_str(), i->length() + 1, 1, out_stream);
     if (block_write == 0) {
       fatal_syserror("Cannot write word to output stream");
     }
-    block_write = fwrite(&data.second, sizeof(double), 1, out_stream);
+
+    o.e.value = log10(static_cast<double>(M)
+		      / static_cast<double>(idf_list[*i]));
+    block_write = fwrite(&o, sizeof(o), 1, out_stream);
     if (block_write == 0) {
       fatal_syserror("Cannot write IDF to output stream");
     }

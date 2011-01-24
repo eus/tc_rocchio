@@ -21,52 +21,33 @@
 #include <vector>
 #include <string>
 #include "utility.h"
+#include "utility.hpp"
 #include "utility_vector.h"
 
 using namespace std;
 
 static char *buffer = NULL;
-static double *W_vectors = NULL;
-static unsigned int W_vectors_count;
-static double *accumulator = NULL;
+static double *dot_products = NULL;
+static size_t dot_products_size;
 CLEANUP_BEGIN
 {
   if (buffer != NULL) {
     free(buffer);
   }
-  if (W_vectors != NULL) {
-    free(W_vectors);
-  }
-  if (accumulator != NULL) {
-    free(accumulator);
+  if (dot_products != NULL) {
+    free(dot_products);
   }
 } CLEANUP_END
 
-typedef vector<string> class_cat_list;
-static class_cat_list cat_list;
+typedef pair<string, class_sparse_vector> class_W_vector;
+typedef vector<class_W_vector> class_W_vectors;
+static class_W_vectors W_vectors;
+static unsigned int W_vectors_count;
+
 static unsigned int vector_size;
 static inline void vector_size_fn(unsigned int size)
 {
   vector_size = size;
-
-  /* For storing W vectors as column vectors instead of row vectors to minimize
-   * page fault when doing swiping for dot product calculation because the
-   * number of categories is much less compared to the number of elements in
-   * a vector.
-   */
-  W_vectors = static_cast<double *>(malloc(sizeof(*W_vectors) * W_vectors_count
-					   * vector_size));
-  if (W_vectors == NULL) {
-    fatal_error("No memory to store all W vectors"
-		" (try to program differently)");
-  }
-
-  /* Create the accumulator and initialize it to zero */
-  accumulator = static_cast<double *>(malloc(sizeof(*accumulator)
-					     * W_vectors_count));
-  if (accumulator == NULL) {
-    fatal_error("No memory to create accumulator (try to program differently)");
-  }
 }
 
 string word;
@@ -75,26 +56,26 @@ static inline void string_partial_fn(char *str)
   word.append(str);
 }
 
+static class_sparse_vector *W;
 static inline void string_complete_fn(void)
 {
-  cat_list.push_back(word);
+  W_vectors.push_back(class_W_vector());
+
+  class_W_vector &W_vector = W_vectors.back();
+  W_vector.first.append(word);
+  W_vector.second = class_sparse_vector();
+  W = &W_vector.second;
+
   word.clear();
+}
+
+static inline void offset_count_fn(unsigned int count)
+{
 }
 
 static inline void double_fn(unsigned int index, double value)
 {
-  static size_t offset = 0;
-
-  /* Store W vectors as column vectors instead of row vectors to minimize
-   * page fault when doing swiping for dot product calculation because the
-   * number of categories is much less compared to the number of elements in
-   * a vector.
-   */
-  W_vectors[offset + index * W_vectors_count] = value;
-
-  if (index + 1 == vector_size) {
-    offset++;
-  }
+  (*W)[index] = value;
 }
 
 static inline void load_profile_file(char *filename)
@@ -106,7 +87,7 @@ static inline void load_profile_file(char *filename)
   }
 
   parse_vector(buffer, BUFFER_SIZE, vector_size_fn, string_partial_fn,
-	       string_complete_fn, double_fn);
+	       string_complete_fn, offset_count_fn, double_fn);
 }
 
 static inline void vector_size_fn_dot(unsigned int size)
@@ -127,28 +108,44 @@ static inline void string_complete_fn_dot(void)
 
   word.clear();
 
-  memset(accumulator, 0, sizeof(*accumulator) * W_vectors_count);
+  memset(dot_products, 0, dot_products_size);
 }
 
-static inline void double_fn_dot(unsigned int w_idx, double value)
+static unsigned int offset_count;
+static inline void offset_count_fn_dot(unsigned int count)
 {
-  for (unsigned int cat_idx = 0; cat_idx < W_vectors_count; cat_idx++) {
-    accumulator[cat_idx] += (W_vectors[cat_idx + w_idx * W_vectors_count]
-			     * value);
+  offset_count = count;
+}
+
+static inline void double_fn_dot(unsigned int index, double value)
+{
+  static unsigned int count = 0;
+
+  count++;
+
+  for (unsigned int i = 0; i < W_vectors_count; i++) {
+
+    class_sparse_vector &W = W_vectors[i].second;
+    class_sparse_vector::iterator entry = W.find(index);
+    if (entry != W.end()) { // W[index] is not zero
+      dot_products[i] += entry->second * value; // the dot product
+    }
   }
 
-  if (w_idx + 1 == vector_size) { // All entries of w vector have been processed
+  if (count == offset_count) { // All entries of w vector have been processed
+
+    count = 0;
 
     /* Output the highest category */
-    int cat_idx = 0; // If all dot products are zero, just pick the first cat
-    double max_dot_product = accumulator[0];
-    for (unsigned int i = 1; i < W_vectors_count; i++) {      
-      if (max_dot_product < accumulator[i]) {
-	max_dot_product = accumulator[i];
+    int cat_idx = 0; // If all dot products are the same, pick the first cat
+    double max_dot_product = dot_products[0];
+    for (unsigned int i = 1; i < W_vectors_count; i++) {
+      if (max_dot_product < dot_products[i]) {
+	max_dot_product = dot_products[i];
 	cat_idx = i;
       }
     }
-    fprintf(out_stream, "%s\n", cat_list[cat_idx].c_str());
+    fprintf(out_stream, "%s\n", W_vectors[cat_idx].first.c_str());
   }
 }
 
@@ -159,29 +156,35 @@ MAIN_BEGIN(
 "Otherwise, the input file is read for input.\n"
 "Then, the input stream is expected to have a list of document names and\n"
 "their corresponding w vectors in the following binary format whose\n"
-"endianness follows that of the host machine; size of `double' is 8 bytes:\n"
-"+----------------------------------------------------------------------+\n"
-"| N in unsigned int (4 bytes)                                          |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"| NULL-terminated doc_name_1 | w_1_1 in double | ... | w_N_1 in double |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"|                                 ...                                  |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"| NULL-terminated doc_name_M | w_1_1 in double | ... | w_N_M in double |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
+"endianness follows that of the host machine:\n"
+"+--------------------------------------------------------------------------+\n"
+"| Normal vector size of the sparse vector in unsigned int (4 bytes)        |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"| NULL-terminated doc_name_1 |Q_1| off_1_1 | w_1_1 | ... | off_Q_1 | w_Q_1 |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"|                                    ...                                   |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"| NULL-terminated doc_name_M |Q_M| off_1_M | w_1_M | ... | off_Q_M | w_Q_M |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"Q_i is an unsigned int datum (4 bytes) expressing the number of\n"
+"offset-element pairs of sparse vector representation of document i.\n"
+"off_i_j is an unsigned int datum (4 bytes) expressing the offset of\n"
+"element i within sparse vector j.\n"
+"w_i_j is a double datum (8 bytes) expressing the value at position i within\n"
+"sparse vector j.\n"
 "Logically, the file should come from w_to_vector processing unit.\n"
 "The mandatory option -D specifies the name of PROFILE file containing the\n"
 "profile vectors of K categories in the following binary format whose\n"
 "endianness is expected to be that of the host machine:\n"
-"+----------------------------------------------------------------------+\n"
-"| N in unsigned int (4 bytes)                                          |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"| NULL-terminated cat_name_1 | W_1_1 in double | ... | W_N_1 in double |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"|                                 ...                                  |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
-"| NULL-terminated cat_name_K | W_1_1 in double | ... | W_N_K in double |\n"
-"+----------------------------+-----------------+-----+-----------------+\n"
+"+--------------------------------------------------------------------------+\n"
+"| Normal vector size of the sparse vector in unsigned int (4 bytes)        |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"| NULL-terminated cat_name_1 |Q_1| off_1_1 | w_1_1 | ... | off_Q_1 | w_Q_1 |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"|                                    ...                                   |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
+"| NULL-terminated cat_name_K |Q_K| off_1_K | w_1_K | ... | off_Q_K | w_Q_K |\n"
+"+----------------------------+---+---------+-------+-----+---------+-------+\n"
 "Logically, the file should come from rocchio processing unit.\n"
 "Then, this processing unit will calculate the dot product of each document\n"
 "weight vector w with all profile vectors. Then, following OVA\n"
@@ -192,8 +195,8 @@ MAIN_BEGIN(
 "DOC_NAME CAT_NAME\\n\n"
 "The result is output to the given file if an output file is specified, or to\n"
 "stdout otherwise.\n",
-"D:M:",
-"-D PROFILE_FILE -M CATEGORY_COUNT",
+"D:",
+"-D PROFILE_FILE",
 0,
 case 'D':
 /* Allocating tokenizing buffer */
@@ -206,27 +209,28 @@ profile_file_name = optarg;
 /* End of allocation */
 break;
 
-case 'M':
-W_vectors_count = strtoul(optarg, NULL, 10);
-if (W_vectors_count == 0) { // Cannot carry out any dot product
-  exit(EXIT_SUCCESS);
-}
-break;
-
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
-  if (W_vectors_count == 0) {
-    fatal_error("-M must be specified (-h for help)");
-  }
 
   load_profile_file(profile_file_name);
+  W_vectors_count = W_vectors.size();
+  if (W_vectors_count == 0) {
+    fatal_error("Cannot carry out dot product: PROFILE file is empty");
+  }
+
+  dot_products_size = sizeof(*dot_products) * W_vectors_count;
+  dot_products = static_cast<double *>(malloc(dot_products_size));
+  if (dot_products == NULL) {
+    fatal_error("No memory to store all profile vectors"
+		" (try to program differently)");
+  }
 }
 MAIN_INPUT_START
 {
   parse_vector(buffer, BUFFER_SIZE, vector_size_fn_dot, string_partial_fn_dot,
-	       string_complete_fn_dot, double_fn_dot);
+	       string_complete_fn_dot, offset_count_fn_dot, double_fn_dot);
 }
 MAIN_INPUT_END
 MAIN_END

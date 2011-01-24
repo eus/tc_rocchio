@@ -67,9 +67,10 @@ static inline int read_string(char *buffer, size_t buffer_size,
   return 1;
 }
 
-static inline double read_double(char *buffer, size_t buffer_size,
-				 size_t *byte_read, size_t *offset,
-				 unsigned int i, unsigned j)
+static inline void read_fixed_datum(char *buffer, size_t buffer_size,
+				    size_t *byte_read, size_t *offset,
+				    unsigned int i, int j,
+				    void *result, size_t result_size)
 {
   if (*offset == *byte_read) {
 
@@ -85,9 +86,8 @@ static inline double read_double(char *buffer, size_t buffer_size,
     }
   }
 
-  double result;
-  char *ptr = (char *) &result;
-  size_t remaining = sizeof(result);
+  char *ptr = (char *) result;
+  size_t remaining = result_size;
   while (1) {
     size_t len = *byte_read - *offset;
     if (len >= remaining) {
@@ -106,14 +106,13 @@ static inline double read_double(char *buffer, size_t buffer_size,
 		  i + 1, j + 1);
     }
   }
-
-  return result;
 }
 
 static inline void parse_vector(char *buffer, size_t buffer_size,
 				void (*vector_size_fn)(unsigned int size),
 				void (*string_partial_fn)(char *str),
 				void (*string_complete_fn)(void),
+				void (*offset_count_fn)(unsigned int count),
 				void (*double_fn)(unsigned int index,
 						  double value))
 {
@@ -123,9 +122,7 @@ static inline void parse_vector(char *buffer, size_t buffer_size,
   if (block_read == 0) {
     fatal_error("Malformed input: cannot read record count");
   }
-  if (vector_size_fn != NULL) {
-    vector_size_fn(count);
-  }
+  vector_size_fn(count);
 
   size_t offset = 0;
   load_next_chunk(buffer, buffer_size, &block_read, &offset);
@@ -144,10 +141,16 @@ static inline void parse_vector(char *buffer, size_t buffer_size,
 
     string_complete_fn();
 
+    read_fixed_datum(buffer, buffer_size, &block_read, &offset, i, -1,
+		     &count, sizeof(count));
+    offset_count_fn(count);
+
     unsigned int j = 0;
+    struct sparse_vector_entry e;
     while (j < count) {
-      double_fn(j, read_double(buffer, buffer_size,
-			       &block_read, &offset, i, j));
+      read_fixed_datum(buffer, buffer_size, &block_read, &offset, i, j,
+		       &e, sizeof(e));
+      double_fn(e.offset, e.value);
       j++;
     }
 

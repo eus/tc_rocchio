@@ -18,7 +18,9 @@ I measure the computation performance in terms of the processing time, the CPU u
 
 I observe that performance really suffers when doing output but not when doing input. Beside this, I also observe that C file outputting facility (e.g., fprintf) has much better performance compared to that of C++ (e.g., doing `myfile << 0.2322;'). The details of the experiment that leads to this conclusion can be found in doc/output_kills/README.
 
-Due to not checking the return value of fprintf, I only discovered much later that processing unit w_to_vector actually could not output all weight vectors of all documents. Specifically, only 3,613 weight vectors were stored in w_vectors.bin to be processed by processing unit rocchio. This is because of file size limit of the operating systems. Since each weight vector has 32,002 elements and the total number of documents in the training set is 11,476, the minimum size of file w_vectors.bin is 8 bytes x 32,002 x 11,476 = 2,938,039,616 bytes, which is approximately 3 GB. However, because the weight vectors are sparse vectors, an efficient data structure and computation can be devised. As advised by Prof. Moschitti, the elements of a weight vector can be put in a binary search tree.
+Due to not checking the behavior of `xargs', I only discovered much later that processing unit w_to_vector did not receive all documents to be processed because there is a limit on the number of command line arguments that can be passed to a process. Specifically, only 3,613 weight vectors were stored in w_vectors.bin to be processed by processing unit rocchio because only 3,613 files are given by `xargs' as command line arguments. This problem can be prevented by forcing `xargs' to quit using `-x' if the number of command line arguments exceeds the limit.
+
+Aside from this, even if `xargs' did not present that limitation, w_to_vector actually could not output all weight vectors of all documents. This is because of file size limit of the operating systems. Since each weight vector has 32,002 elements and the total number of documents in the training set is 11,476, the minimum size of file w_vectors.bin is 8 bytes x 32,002 x 11,476 = 2,938,039,616 bytes, which is approximately 3 GB. However, because the weight vectors are sparse vectors, an efficient data structure and computation can be devised. As advised by Prof. Moschitti, the elements of a weight vector can be put in a binary search tree.
 
 Experiment results:
 1. On Reuters21578-Apte-115Cat (http://disi.unitn.it/moschitti/corpora/Reuters21578-Apte-115Cat.tar.gz)
@@ -118,7 +120,7 @@ sys	0m43.395s
 
 ** Step 2. IDF calculation and dictionary building takes 4.035s at CPU usage of 94.98% with user/sys ratio of 18.160. 
 
-** Step 3. Generation of w vectors for all documents takes 149.705s at CPU usage of 35.80% with user/sys ratio of 1.738. All 11,476 documents are processed but only 3,613 weight vectors are output due to file size limit in the operating system as described above. Below are some experiments of different approaches:
+** Step 3. Generation of w vectors for all documents takes 149.705s at CPU usage of 35.80% with user/sys ratio of 1.738. Only 3,613 documents are processed due to the limitation of the number command line arguments that can be passed into a process as described above. Below are some experiments of different approaches:
 *** Using socket in which idf_dic processing unit acts as a server and several w_to_vector processing units act as clients in which each w_to_vector processing unit takes care of only one document (see https://github.com/eus/tc_rocchio/commit/24b7db191e82d6d3f694dd6828b9cd7af0061e80),
 ( $exec_dir/w_to_vector -D /tmp/tc_rocchio/idf_dic.socket -o $file.w $file ) &
 results in:
@@ -133,7 +135,7 @@ sys	2m5.164s
 
 *** Using only one w_to_vector processing unit to load IDF_DIC file once and process all TF documents serially takes 138.011s at CPU usage of 38.31% which is 32% speed up. But, I notice that this processing unit does not have a stable performance. Last time it was around 178s. After that, it was around 150s. I think this is because the processing unit processes the input files one-by-one resulting in the OS scheduler disadvantaging this processing unit. Using thread to process each file may help improve performance.
 
-** Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%. This can be fast because calculation can be skipped once an element is negative as permitted by max{0, ...}. Moreover, only 3,613 weight vectors are processed due to an error in the processing unit w_to_vector.
+** Step 4. Generation of W vectors for all categories takes 4.732s at CPU usage of 97.22%. This can be fast because there is a fatal logic error in which calculation of a profile vector is prematurely aborted by using `goto output' once an element in the vector is negative. Aside from that, only 3,613 weight vectors are processed due to an error in the processing unit w_to_vector.
 
 ** Step 5. Classifying the training set itself takes 32.982s at CPU usage of 93.60% with user/sys ratio of 42.362. Although only 3,613 weight vectors are considered, this may be slow due to outputting and not harnessing sparse vectors.
 
