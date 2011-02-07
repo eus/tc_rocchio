@@ -15,37 +15,50 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.     *
  *****************************************************************************/
 
-#ifndef UTILITY_HPP
-#define UTILITY_HPP
+#ifndef UTILITY_CLASSIFIER_HPP
+#define UTILITY_CLASSIFIER_HPP
 
-#include <unordered_map>
-#include <string>
-#include <list>
-#include "utility.h"
+#include "utility_vector.hpp"
 
-#define MAIN_LIST_OF_FILE_START						\
-  tokenizer("\n", buffer, BUFFER_SIZE, partial_fn_file, complete_fn_file); \
-  for (class_input_file_paths::iterator file_path = input_file_paths.begin(); \
-       file_path != input_file_paths.end(); file_path++)		\
-    {									\
-      open_in_stream(file_path->c_str());
+class class_W_property {
+public:
+  double P_avg; /* valid after all ESes have been processed and to estimate
+		 * final threshold
+		 */
+  double P_max; /* valid in each ES */
+  double BEP_max; /* valid in each ES to help determine P_max */
+  double threshold; /* valid for final output */
+  double BEP; /* valid for final output; BEP associated with threshold */
+  inline void reset(void)
+  {
+    P_avg = 0;
+    P_max = 0;
+    BEP_max = 0;
+    threshold = 0;
+    BEP = 0;
+  }
+  inline void ES_reset(void)
+  {
+    P_max = 0;
+    BEP_max = 0;
+  }
+  inline void update_BEP_max(double BEP, double P)
+  {
+    if (BEP > BEP_max) {
+      BEP_max = BEP;
+      P_max = P;
+    }
+  }
+  inline class_W_property(void)
+  {
+    reset();
+  }
+  inline ~class_W_property()
+  {
+    reset();
+  }
+};
 
-#define MAIN_LIST_OF_FILE_END }
+typedef pair<class_W_property, class_sparse_vector /* W */> class_classifier;
 
-using namespace std;
-
-static string name_in_list_of_file;
-static inline void partial_fn_file(char *path)
-{
-  name_in_list_of_file.append(path);
-}
-
-typedef list<string> class_input_file_paths;
-static class_input_file_paths input_file_paths;
-static inline void complete_fn_file(void)
-{
-  input_file_paths.push_back(name_in_list_of_file);
-  name_in_list_of_file.clear();
-}
-
-#endif /* UTILITY_HPP */
+#endif /* UTILITY_CLASSIFIER_HPP */

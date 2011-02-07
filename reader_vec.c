@@ -21,7 +21,9 @@ MAIN_BEGIN(
 "If -n (i.e., normal) is given, the following human-readable form of the\n"
 "normal vector representation is used instead:\n"
 "INPUT_FILE_NAME: (STRING( FLOATING_POINT_NUMBER)*)?\\n\n"
-"If there is only one file, `INPUT_FILE_NAME: ' is not output.\n",
+"If there is only one file, `INPUT_FILE_NAME: ' is not output.\n"
+"If the sparse vector contains additional fields, each will be put just after\n"
+"the STRING enclosed in square brackets (i.e., []).\n",
 "n",
 "-n",
 1,
@@ -83,21 +85,35 @@ MAIN_INPUT_START
     }
     
     unsigned int prev_offset = 0;
-    unsigned int count = 0;
     struct sparse_vector_entry e;
-    while (count < Q) {
+    unsigned int count;
+    for (count = 0; count < Q; count++) {
       block_read = fread(&e, 1, sizeof(e), in_stream);
       if (block_read == 0) {
 	fatal_error("Input file %s has malformed structure: "
 		    "record #%u misses entry at offset #%u",
 		    in_stream_name, record_count + 1, count + 1);
       } else if (block_read == sizeof(e)) {
+
+	if (e.offset >= M) { // Flag for additional data not in the vector
+	  fprintf(out_stream, " [%u: %f]", e.offset, e.value);
+	  continue;
+	}
+
 	if (show_normal) {
+
+	  if (e.offset < prev_offset) {
+	    fatal_error("offset of sparse vector is unordered:"
+			" cannot display in standard form"
+			" unless this reader can sort it");
+	  }
+
 	  for (; prev_offset < e.offset; prev_offset++) {
 	    fprintf(out_stream, " %f", 0.0);
 	  }
 	  prev_offset++;
 	  fprintf(out_stream, " %f", e.value);
+
 	} else {
 	  fprintf(out_stream, " %u %f", e.offset, e.value);
 	}
@@ -106,7 +122,6 @@ MAIN_INPUT_START
 		    "record #%u is corrupted at entry #%u",
 		    in_stream_name, record_count + 1, count + 1);
       }
-      count++;
     }
     if (show_normal) {
       for (; prev_offset < M; prev_offset++) {

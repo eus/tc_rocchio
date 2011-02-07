@@ -1,3 +1,20 @@
+/*****************************************************************************
+ * Copyright (C) 2011  Tadeus Prastowo (eus@member.fsf.org)                  *
+ *                                                                           *
+ * This program is free software: you can redistribute it and/or modify      *
+ * it under the terms of the GNU General Public License as published by      *
+ * the Free Software Foundation, either version 3 of the License, or         *
+ * (at your option) any later version.                                       *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.     *
+ *****************************************************************************/
+
 #ifndef UTILITY_H
 #define UTILITY_H
 
@@ -6,6 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#define FP_COMPARISON_DELTA 1e-15
 
 #define NO_MORE_CASE default:					\
   fatal_error("%c is invalid option (-h for help)", optopt);	\
@@ -34,16 +53,7 @@
       } else {								\
 	switch (optchar) {						\
 	case 'o':							\
-	  if (out_stream != stdout) {					\
-	    if (fclose(out_stream) != 0) {				\
-	      fatal_syserror("Cannot close output %s", out_stream_name); \
-	    }								\
-	  }								\
-	  out_stream = fopen(optarg, "w");				\
-	  if (out_stream == NULL) {					\
-	    fatal_syserror("Cannot open output %s for writing", optarg); \
-	  }								\
-	  out_stream_name = optarg;					\
+	  open_out_stream(optarg);					\
 	  break;							\
 	case 'h':							\
 	  fprintf(stderr, "Usage: %s " more_opt_help			\
@@ -60,7 +70,7 @@
 
 #define MAIN_INPUT_START						\
   do {									\
-    recover_stdin_from_options_processing();				\
+    recover_stdin();							\
     if (argv[optind] != NULL) {						\
       open_in_stream(argv[optind]);					\
       optind++;								\
@@ -136,7 +146,7 @@ static int multiple_input = 0;
  * restored it back to the original state. But, doing so manually is
  * unproductive.
  */
-static inline void recover_stdin_from_options_processing(void)
+static inline void recover_stdin(void)
 {
   if (in_stream != stdin) {
     if (fclose(in_stream) != 0) {
@@ -160,6 +170,28 @@ static inline void open_in_stream(const char *path)
   if (in_stream == NULL) {
     fatal_syserror("Cannot open input %s for reading", in_stream_name);
   }
+}
+
+static inline void open_out_stream(const char *path)
+{
+  if (out_stream != stdout) {
+    if (fclose(out_stream) != 0) {
+      fatal_syserror("Cannot close output %s", out_stream_name);
+    }
+  }
+  out_stream_name = path;
+  out_stream = fopen(out_stream_name, "w");
+  if (out_stream == NULL) {
+    fatal_syserror("Cannot open output %s for writing", out_stream_name);
+  }
+}
+
+/* Taken from http://eternallyconfuzzled.com/arts/jsw_art_rand.aspx
+ * in public domain (2010 January 30)
+ */
+static inline double uniform_deviate(int seed)
+{
+  return seed * (1.0 / (RAND_MAX + 1.0));
 }
 
 /**

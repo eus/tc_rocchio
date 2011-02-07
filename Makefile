@@ -6,13 +6,14 @@ ARCHITECTURE_DEPENDENT_OPTIMIZATION := \
 endif
 
 C_EXECUTABLES := tokenizer  reader_2col streaming_tokenizer reader_vec
-CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier
+CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier perf_measurer
 OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
-	w_to_vector.o reader_vec.o rocchio.o classifier.o
+	w_to_vector.o reader_vec.o rocchio.o classifier.o perf_measurer.o
 
 COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
 
-CPPFLAGS := -DBUFFER_SIZE=4096 -DOS_PATH_DELIMITER=\'/\'
+NDEBUG := -DNDEBUG
+CPPFLAGS := $(NDEBUG) -DBUFFER_SIZE=4096 -DOS_PATH_DELIMITER=\'/\'
 CFLAGS := $(COMMON_COMPILER_FLAGS)
 CXXFLAGS := -std=c++0x $(COMMON_COMPILER_FLAGS)
 
@@ -35,9 +36,11 @@ reader_vec:
 
 tf.o: utility.h
 idf_dic.o: utility.h utility.hpp
-w_to_vector.o: utility.h utility.hpp utility_vector.h
-rocchio.o: utility.h utility_vector.h utility.hpp
-classifier.o: utility.h utility_vector.h utility.hpp
+w_to_vector.o: utility.h utility.hpp utility_vector.hpp
+rocchio.o: utility.h utility_vector.hpp utility.hpp utility_doc_cat_list.hpp \
+	utility_classifier.hpp
+classifier.o: utility.h utility_vector.hpp utility.hpp utility_classifier.hpp
+perf_measurer.o: utility.h utility_doc_cat_list.hpp
 
 clean:
 	-rm -- $(OBJECTS) > /dev/null 2>&1

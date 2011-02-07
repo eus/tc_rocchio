@@ -1,13 +1,90 @@
-#ifndef UTILITY_VECTOR_H
-#define UTILITY_VECTOR_H
+/*****************************************************************************
+ * Copyright (C) 2011  Tadeus Prastowo (eus@member.fsf.org)                  *
+ *                                                                           *
+ * This program is free software: you can redistribute it and/or modify      *
+ * it under the terms of the GNU General Public License as published by      *
+ * the Free Software Foundation, either version 3 of the License, or         *
+ * (at your option) any later version.                                       *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.     *
+ *****************************************************************************/
 
-#include <stdio.h>
-#include <string.h>
+#ifndef UTILITY_VECTOR_HPP
+#define UTILITY_VECTOR_HPP
+
+#include <unordered_map>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "utility.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+using namespace std;
+
+typedef unsigned int class_sparse_vector_offset;
+
+/* An empty sparse vector means that all entries are zero. */
+typedef unordered_map<class_sparse_vector_offset, double> class_sparse_vector;
+
+/* Assign weight * src to dst */
+static inline void assign_weighted_sparse_vector(class_sparse_vector &dst,
+						 const class_sparse_vector &src,
+						 const double weight)
+{
+  dst.clear();
+
+  for (class_sparse_vector::const_iterator i = src.cbegin();
+       i != src.cend(); i++)
+    {
+      dst[i->first] = weight * i->second;
+    }
+}
+
+/* Add src to dst */
+static inline void add_sparse_vector(class_sparse_vector &dst,
+				     const class_sparse_vector &src)
+{
+  for (class_sparse_vector::const_iterator i = src.cbegin();
+       i != src.cend(); i++)
+    {
+      dst[i->first] += i->second;
+    }
+}
+
+static inline double dot_product_sparse_vector(const class_sparse_vector &a,
+					       const class_sparse_vector &b)
+{
+  const class_sparse_vector *v1, *v2; /* v1.size() <= v2.size() */
+  double result = 0;
+
+  /* Set to work on the shorter vector */
+  if (a.size() > b.size()) {
+    v1 = &b;
+    v2 = &a;
+  } else {
+    v1 = &a;
+    v2 = &b;
+  }
+  /* End of setting */
+
+  for (class_sparse_vector::const_iterator i = v1->cbegin(); i != v1->cend();
+       i++)
+    {
+      class_sparse_vector::const_iterator e_ptr = v2->find(i->first);
+      if (e_ptr == v2->cend()) {
+	continue;
+      }
+
+      result += e_ptr->second * i->second;
+    }
+
+  return result;
+}
 
 static inline void load_next_chunk(char *buffer, size_t buffer_size,
 				   size_t *byte_read, size_t *offset)
@@ -114,7 +191,8 @@ static inline void parse_vector(char *buffer, size_t buffer_size,
 				void (*string_complete_fn)(void),
 				void (*offset_count_fn)(unsigned int count),
 				void (*double_fn)(unsigned int index,
-						  double value))
+						  double value),
+				void (*end_of_vector_fn)(void))
 {
   size_t block_read;
   unsigned int count;
@@ -154,12 +232,10 @@ static inline void parse_vector(char *buffer, size_t buffer_size,
       j++;
     }
 
+    end_of_vector_fn();
+
     i++;
   }
 }
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* UTILITY_VECTOR_H */
+#endif /* UTILITY_VECTOR_HPP */

@@ -24,7 +24,7 @@
 #include <cstring>
 #include <cmath>
 #include "utility.h"
-#include "utility_vector.h"
+#include "utility_vector.hpp"
 #include "utility.hpp"
 
 using namespace std;
@@ -99,16 +99,17 @@ static inline void double_fn(unsigned int index, double value)
   word.clear(); 
 }
 
+static inline void end_of_vector_fn(void)
+{
+}
+
 static inline void load_idf_dic_file(const char *filename)
 {
-  in_stream = fopen(filename, "r");
-  in_stream_name = filename;
-  if (in_stream == NULL) {
-    fatal_syserror("Cannot open IDF_DIC file %s", filename);
-  }
+  open_in_stream(filename);
 
   parse_vector(buffer, BUFFER_SIZE, vector_size_fn, string_partial_fn,
-	       string_complete_fn, offset_count_fn, double_fn);
+	       string_complete_fn, offset_count_fn, double_fn,
+	       end_of_vector_fn);
 }
 
 typedef unordered_set<string> class_processed_doc_list;
