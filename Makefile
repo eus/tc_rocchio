@@ -5,9 +5,9 @@ ARCHITECTURE_DEPENDENT_OPTIMIZATION := \
 	-march=native -mfpmath=sse -malign-double -mmmx -msse -msse2 -msse3
 endif
 
-C_EXECUTABLES := tokenizer  reader_2col streaming_tokenizer reader_vec
+C_EXECUTABLES := tokenizer reader_vec
 CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier perf_measurer
-OBJECTS := tokenizer.o tf.o idf_dic.o reader_2col.o streaming_tokenizer.o \
+OBJECTS := tokenizer.o tf.o idf_dic.o \
 	w_to_vector.o reader_vec.o rocchio.o classifier.o perf_measurer.o
 
 COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
@@ -24,12 +24,6 @@ $(CXX_EXECUTABLES): %: %.o
 
 tokenizer.o: utility.h
 tokenizer:
-
-streaming_tokenizer.o: utility.h
-streaming_tokenizer:
-
-reader_2col.o: utility.h
-reader_2col:
 
 reader_vec.o: utility.h
 reader_vec:

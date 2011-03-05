@@ -27,17 +27,17 @@ TIMEFORMAT=' \[%3Rs at CPU usage of %P%% with user/sys ratio of `echo "scale=3; 
 
 prog_name=driver.sh
 
-testing_from_step=6;
+testing_from_step=6
 
 # Default values
-from_step=0;
-to_step=12;
-p_init=0;
-p_inc=1;
-p_max=30;
-ES_count=20;
-ES_percentage=30;
-ES_rseed=1;
+from_step=0
+to_step=12
+p_init=0
+p_inc=1
+p_max=30
+ES_count=20
+ES_percentage=30
+ES_rseed=1
 excluded_cat=unknown
 # End of default values
 
@@ -100,7 +100,7 @@ Available steps:
       Then, the document is assigned the categories associated with the
       binary classifiers that accept the document.
     $((testing_from_step + 4)). Measuring performances of classifiers
-    [EXTRA STEPS]
+    [EXTRA STEPS (TRAINING PHASE must be done first; TESTING_PHASE is unneeded)]
     $((testing_from_step + 5)). OVA classification of the training set itself
     $((testing_from_step + 6)). Measuring performances of classifiers on the training set itself
 EOF
@@ -357,8 +357,8 @@ for ((i = $from_step; i <= $to_step; i++)); do
 	2>&1 \
 	| sed \
 	-e "$not_timing_line s%'%'\\\\''%g" \
-	-e "$not_timing_line s%.*%echo '&';%" \
-	-e "$timing_line"' s%.*%echo &%'` \
+	-e "$not_timing_line s%.*%echo -e '&';%" \
+	-e "$timing_line"' s%.*%echo -e &;%'` \
 	| sed \
 	-e 's% with user/sys ratio of ]% with user/sys ratio of infinity]%'
 done

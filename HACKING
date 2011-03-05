@@ -1,0 +1,14 @@
+To debug a particular unit, say rocchio.cpp, run driver.sh from the first step up to the step before the step that uses the particular unit. So, in the case of rocchio.cpp, driver.sh should be run from step 0 to step 4.
+
+Afterwards, in driver.sh, edit the function body of the step that runs the unit to be debugged by adding `echo' after `time' but before the executable. In the case of rocchio.cpp, below is the snippet of the edited function body of step 5:
+
+function step_5 {
+    echo -n "5. [TRAINING] PRCs generation..."
+    time (echo $rocchio ...
+}
+
+Next, run driver.sh only for the step containing the unit to be debugged utilizing option switch `-a' and `-b'. This will print out the complete command line to run the unit to be debugged. Remember the command line by copying and pasting it somewhere.
+
+Now the unit source code can be edited in any way (e.g., putting some `fprintf(stderr, ...)') and be compiled just by running `make'.
+
+Finally, execute the unit directly without using driver.sh by pasting the command line that is produced before. The complete command line can also be used to run the unit under GDB and valgrind.
