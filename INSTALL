@@ -1,0 +1,35 @@
+The codebase are developed in C primarily and C++ for high-level data structures with GCC in mind and uses features of C++0x such as unordered_map. As such, you have to compile the codebase using C++0x-capable GCC-compatible compiler. Otherwise, you need to edit the codebase on your own to replace the C++0x features and things specific to GCC with something else that suits your setup and has the same semantics.
+
+To build the codebase, just type `make'. Afterwards, you need to provide the training and testing data (corpora) that are normalized as follows:
+1. Document categories are represented as a collection of directories in one directory in the filesystem.
+2. Each document is a plain text file stored in one or more of the directories. When a document is labeled by more than one category, the document will have a copy in each assigned directory. If a document is unlabeled, it can be stored in a directory representing "Unknown". Later, driver.sh needs to be informed about the special directory using -X switch.
+3. All directory and file names should contain only alphanumeric characters and underscore.
+
+An example layout of a normalized corpora directory is as follows:
+./Reuters-90/
+  |
+  +-- testing/
+  |   |
+  |   +-- barley
+  |   |   |
+  |   |   +-- doc_1
+  |   |   |
+  |   |   \-- doc_2
+  |   |
+  |   +-- money/
+  |       |
+  |       \-- doc_1
+  |
+  \-- training/
+      |
+      +-- barley/
+      |   |
+      |   \-- doc_4
+      |
+      +-- money/
+          |
+          \-- doc_4
+
+You can download some normalized corpora from Prof. Moschitti's website: http://disi.unitn.it/moschitti/corpora.htm
+
+Finally, use driver.sh that is written in BASH to drive the training and testing process. Execute `./driver.sh -h' to see how you can use it.

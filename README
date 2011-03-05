@@ -1,4 +1,10 @@
-See driver.sh on how to use the codebase.
+This project is a student project related to the study of Machine Learning. Specifically, this project tries to build the fastest implementation of Parametrized Rocchio Classifier (PRC) that is described in this paper: http://disi.unitn.it/moschitti/Projects/ECIR03.pdf (Alessandro Moschitti. 2003. A study on optimal parameter tuning for Rocchio text classifier. In Proceedings of the 25th European conference on IR research (ECIR'03), Fabrizio Sebastiani (Ed.). Springer-Verlag, Berlin, Heidelberg, 420-435.) More information on Rocchio can be obtained from Prof. Moschitti's teaching website: http://disi.unitn.it/moschitti/teaching.html, specifically the slide on Automated Text Categorization.
+
+See INSTALL to know how to build the codebase and use it.
+See doc/ for the documentations and further information.
+See HACKING for some suggested ways to debug and develop the codebase further.
+See COPYING for the LICENSE of the codebase.
+See below for the experiment result.
 
 Below are some experiment results that I obtain using the following setup:
 1. A*Note Laptop (http://0x657573.wordpress.com/2010/12/12/finding-another-free-software-compatible-x86-laptop-anote/)
