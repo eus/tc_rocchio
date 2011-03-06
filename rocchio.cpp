@@ -455,35 +455,35 @@ typedef map<double /* dot product */, class_d_list_entry> class_d_list;
 
 #ifdef BE_VERBOSE
 static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
-			     unsigned int cat_doc_count)
+			     unsigned int b, unsigned int c)
 {
   const class_d_list_entry &e = bit->second;
 
-  fprintf(stderr, "@ %f b=%05u c=%05u\n", bit->first, e.second,
-	  cat_doc_count - e.first);
+  fprintf(stderr, "@ %f |C|=%05u |~C|=%05u (b=%05u c=%05u)\n",
+	  bit->first, e.first, e.second, b, c);
 
   if ((e.first != 0 || e.second != 0)
       && e.first_docs.empty() && e.second_docs.empty()) { // In unit testing
     return;
   }
 
-  fprintf(stderr, "\t|C|:");
+  fprintf(stderr, "\t C = {");
   for (vector<string *>::const_iterator x = e.first_docs.begin();
        x != e.first_docs.end();
        x++)
     {
       fprintf(stderr, " %s", (*x)->c_str());
     }
-  fputc('\n', stderr);
+  fprintf(stderr, " }\n");
 
-  fprintf(stderr, "\t|~C|:");
+  fprintf(stderr, "\t~C = {");
   for (vector<string *>::const_iterator x = e.second_docs.begin();
        x != e.second_docs.end();
        x++)
     {
       fprintf(stderr, " %s", (*x)->c_str());
     }
-  fputc('\n', stderr);
+  fprintf(stderr, " }\n");
 }
 #endif
 
@@ -511,17 +511,20 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
 
   unsigned int b = 0;
   unsigned int c = cat_doc_count;
+#ifdef BE_VERBOSE
+  fprintf(stderr, "b=%05u c=%05u\n", b, c);
+#endif
   class_d_list::const_reverse_iterator prev_bit = bit_string.rend();
   for (class_d_list::const_reverse_iterator bit = bit_string.rbegin();
        bit != bit_string.rend();
        bit++)
     {
-#ifdef BE_VERBOSE
-      print_bit(bit, cat_doc_count);
-#endif
-
       unsigned int next_c = c - bit->second.first;
       unsigned int next_b = b + bit->second.second;
+
+#ifdef BE_VERBOSE
+      print_bit(bit, next_b, next_c);
+#endif
 
       if (next_b > next_c) {
 	double prev_diff = (get_precision(cat_doc_count - c, b)
