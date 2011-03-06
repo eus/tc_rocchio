@@ -60,8 +60,7 @@
 		  " [-o OUTPUT_FILE] [INPUT_FILE]%s\n" usage_note,	\
 		  prog_name,						\
 		  is_multiple_input ? " ..." : "");			\
-	  exit(EXIT_SUCCESS);						\
-	  break;							\
+	  return EXIT_SUCCESS;						\
 	cases								\
 	}								\
       }									\
@@ -78,7 +77,7 @@
  
 #define MAIN_INPUT_END } while (multiple_input && argv[optind] != NULL);
 
-#define MAIN_END exit(EXIT_SUCCESS); }
+#define MAIN_END return EXIT_SUCCESS; }
 
 #define CLEANUP_BEGIN void cleanup(void) {				\
   if (in_stream != NULL && in_stream != stdin) {			\
@@ -101,7 +100,7 @@
   do {						\
     fatal_error_hdr();				\
     fprintf(stderr, msg "\n", ## __VA_ARGS__);	\
-    exit (EXIT_FAILURE);			\
+    exit(EXIT_FAILURE);				\
   } while (0)
 
 #define print_error(msg, ...)					\
@@ -115,7 +114,7 @@
     err_msg = strerror(errno);					\
     fatal_error_hdr();						\
     fprintf(stderr, msg " (%s)\n", ## __VA_ARGS__, err_msg);	\
-    exit (EXIT_FAILURE);					\
+    exit(EXIT_FAILURE);						\
   } while (0)
 
 #define print_syserror(msg, ...)				\
