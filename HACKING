@@ -9,6 +9,9 @@ function step_5 {
 
 Next, run driver.sh only for the step containing the unit to be debugged utilizing option switch `-a' and `-b'. This will print out the complete command line to run the unit to be debugged. Remember the command line by copying and pasting it somewhere.
 
-Now the unit source code can be edited in any way (e.g., putting some `fprintf(stderr, ...)') and be compiled just by running `make'.
+Now the unit source code can be edited in any way (e.g., putting some `fprintf(stderr, ...)') and be compiled just by running `make'. You can pass the following variables to `make':
+1. `DEBUG=yes' will run function assert, embedded test cases and such.
+2. `BE_VERBOSE=yes' will make print out during runtime useful for debugging.
+3. `DONT_OPTIMIZE=yes' will compile with `-g3' instead of `-O3'.
 
 Finally, execute the unit directly without using driver.sh by pasting the command line that is produced before. The complete command line can also be used to run the unit under GDB and valgrind.

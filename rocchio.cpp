@@ -25,6 +25,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+
+#ifdef BE_VERBOSE
+#include <unordered_set>
+#endif
+
 #include "utility.h"
 #include "utility.hpp"
 #include "utility_vector.hpp"
@@ -41,10 +46,63 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-static class_doc_cat_list gold_standard;
+typedef pair<class_sparse_vector /* w */,
+	     class_set_of_cats* /* gold standard */> class_w_cats;
+typedef list<class_w_cats> class_w_cats_list;
+static class_w_cats_list all_unique_docs; /* Contains all w in the input */
+
+typedef pair<class_sparse_vector /* sum of w in C */,
+	     unsigned int /* |C| */> class_W_construction;
+typedef pair<class_W_construction, class_classifier> class_cat_profile;
+typedef pair<string /* cat name */,
+	     class_cat_profile /* classifier of this cat */
+	     > class_cat_profile_list_entry;
+typedef vector<class_cat_profile_list_entry> class_cat_profile_list;
+
+#ifdef BE_VERBOSE
+typedef unordered_map<class_sparse_vector *, string> class_w_to_doc_name;
+static class_w_to_doc_name w_to_doc_name;
+typedef unordered_set<class_sparse_vector *> class_docs;
+#else
 typedef vector<class_sparse_vector *> class_docs;
+#endif
 typedef unordered_map<string, class_docs> class_cat_doc_list;
-static class_cat_doc_list cat_doc_list; /* Given a cat name, obtain its docs */
+
+typedef pair<pair<class_cat_doc_list,
+		  unsigned int /* all cats cardinality
+				* (i.e, |C_1| + ... + |C_k|)
+				*/>,
+	     class_cat_profile_list> class_W_construction_material;
+
+typedef class_w_cats * class_w_cats_ptr;
+typedef vector<class_w_cats_ptr> class_unique_docs_for_estimating_Th;
+
+typedef pair<class_unique_docs_for_estimating_Th,
+	     class_W_construction_material> class_data;
+
+static inline unsigned int &all_cats_cardinality(class_data &data)
+{
+  return data.second.first.second;
+}
+static inline class_cat_doc_list &cat_doc_list(class_data &data)
+{
+  return data.second.first.first;
+}
+static inline class_unique_docs_for_estimating_Th &unique_docs(class_data &data)
+{
+  return data.first;
+}
+static inline class_cat_profile_list &cat_profile_list(class_data &data)
+{
+  return data.second.second;
+}
+
+static class_doc_cat_list gold_standard;
+static class_data LS; /* All w in the input are cached here for final Th
+		       * estimation and all category partial profiles are
+		       * stored here to calculate the final profile vectors once
+		       * the corresponding P_avg has been decided.
+		       */
 static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
 {
   if (doc_name.empty()) {
@@ -56,42 +114,11 @@ static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
 
   gold_standard[doc_name].insert(cat_name);
 
-  class_cat_doc_list::iterator i = cat_doc_list.find(cat_name);
-  if (i == cat_doc_list.end()) {
-    cat_doc_list[cat_name];
+  class_cat_doc_list::iterator i = cat_doc_list(LS).find(cat_name);
+  if (i == cat_doc_list(LS).end()) {
+    cat_doc_list(LS)[cat_name];
   }
 }
-
-typedef pair<class_sparse_vector /* sum of w in C */,
-	     unsigned int /* |C| */> class_W_construction;
-typedef pair<class_W_construction, class_classifier> class_cat_profile;
-typedef pair<string /* cat name */,
-	     class_cat_profile /* classifier of this cat */
-	     > class_cat_profile_list_entry;
-typedef list<class_cat_profile_list_entry> class_cat_profile_list;
-
-typedef pair<class_sparse_vector /* w */,
-	     class_set_of_cats* /* gold standard */> class_w_cats;
-typedef list<class_w_cats> class_w_cats_list;
-typedef pair<class_w_cats_list, class_cat_profile_list> class_LS;
-static class_LS LS; /* All w in the input are stored here for final
-		     * Th estimation and all category partial profiles are
-		     * stored here to calculate the final profile vectors once
-		     * the corresponding P_avg has been decided.
-		     */
-static unsigned int all_cats_cardinality = 0; /* This is associated with LS */
-
-typedef pair<unsigned int /* all cats cardinality w.r.t. an ES */,
-	     class_cat_profile_list> class_ES_cat_profile_list;
-typedef pair<class_cat_doc_list /* ES */,
-	     class_cat_doc_list /* LS-ES */> class_ES_and_LS_min_ES;
-typedef pair<class_ES_and_LS_min_ES,
-	     class_ES_cat_profile_list> class_ES; /* List of randomly pointed
-						   * w vectors and a list of
-						   * category profiles to obtain
-						   * the corresponding P_max of
-						   * each category profile.
-						   */
 
 static unsigned int vector_size;
 static inline void vector_size_fn(unsigned int size)
@@ -105,44 +132,57 @@ static inline void string_partial_fn(char *str)
   word.append(str);
 }
 
-static class_w_cats *D_ptr = NULL;
+static class_w_cats_ptr D_ptr = NULL;
 static inline void string_complete_fn(void)
 {
-  /* 1. Push an entry D into LS.
-   * 2. Set the pointer D_ptr to D to fill in the vector w.
+  /* 1. Push an entry D into all_unique_docs.
+   * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in LS.
    * 3. Set the gold standard of D based on the DOC_CAT file while
-   *    incrementing variable all_cats_cardinality.
+   *    incrementing variable all_cats_cardinality of LS.
    * 4. Copy D_ptr to the categories in the gold standard of D.
    */
 
   /* Step 1 */
-  LS.first.push_back(class_w_cats());
+  all_unique_docs.push_back(class_w_cats());
   /* Step 1 completed */
 
   /* Step 2 */
-  D_ptr = &LS.first.back();
+  D_ptr = &all_unique_docs.back();
+  unique_docs(LS).push_back(D_ptr);
   /* Step 2 completed */
 
   /* Step 3 */
+#ifdef BE_VERBOSE
+  w_to_doc_name[&D_ptr->first] = word;
+#endif
+
   class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
   if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
 
     D_ptr->second = NULL;
-    all_cats_cardinality++;
+    all_cats_cardinality(LS)++;
 
     /* Step 4 */
-    cat_doc_list[""].push_back(&D_ptr->first);
+#ifdef BE_VERBOSE
+    cat_doc_list(LS)[""].insert(&D_ptr->first);
+#else
+    cat_doc_list(LS)[""].push_back(&D_ptr->first);
+#endif
     /* Step 4 completed */
   } else {
 
     class_set_of_cats &doc_GS = GS_entry->second;
     D_ptr->second = &doc_GS;
-    all_cats_cardinality += doc_GS.size();
+    all_cats_cardinality(LS) += doc_GS.size();
 
     /* Step 4 */
     for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
       {
-	cat_doc_list[*i].push_back(&D_ptr->first);
+#ifdef BE_VERBOSE
+	cat_doc_list(LS)[*i].insert(&D_ptr->first);
+#else
+	cat_doc_list(LS)[*i].push_back(&D_ptr->first);
+#endif
       }
     /* Step 4 completed */
   }
@@ -280,7 +320,6 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
       const class_docs &cat_docs = e->second;
 
       cat_W_construction.second += cat_docs.size(); // |C|
-
       for (class_docs::const_iterator j = cat_docs.begin(); // sum all w
 	   j != cat_docs.end();
 	   j++)
@@ -396,11 +435,62 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
     }
 }
 
-typedef pair<unsigned int /* #C */, unsigned int /* #~C */> class_d_list_entry;
+#ifdef BE_VERBOSE
+class class_d_list_entry {
+public:
+  unsigned int first;
+  unsigned int second;
+  vector <string *> first_docs;
+  vector <string *> second_docs;
+  class_d_list_entry() {
+    first = 0;
+    second = 0;
+  }
+};
+#else
+typedef pair<unsigned int /*|C|*/, unsigned int /*|~C|*/> class_d_list_entry;
+#endif
+
 typedef map<double /* dot product */, class_d_list_entry> class_d_list;
 
-/* Auxiliary function of function estimate_Th. */
-static inline double do_threshold_estimation(unsigned int a,
+#ifdef BE_VERBOSE
+static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
+			     unsigned int cat_doc_count)
+{
+  const class_d_list_entry &e = bit->second;
+
+  fprintf(stderr, "@ %f b=%05u c=%05u\n", bit->first, e.second,
+	  cat_doc_count - e.first);
+
+  if ((e.first != 0 || e.second != 0)
+      && e.first_docs.empty() && e.second_docs.empty()) { // In unit testing
+    return;
+  }
+
+  fprintf(stderr, "\t|C|:");
+  for (vector<string *>::const_iterator x = e.first_docs.begin();
+       x != e.first_docs.end();
+       x++)
+    {
+      fprintf(stderr, " %s", (*x)->c_str());
+    }
+  fputc('\n', stderr);
+
+  fprintf(stderr, "\t|~C|:");
+  for (vector<string *>::const_iterator x = e.second_docs.begin();
+       x != e.second_docs.end();
+       x++)
+    {
+      fprintf(stderr, " %s", (*x)->c_str());
+    }
+  fputc('\n', stderr);
+}
+#endif
+
+/* Auxiliary function of function estimate_Th.
+ * cat_doc_count is the number of unique documents that belong to target cat.
+ */
+static inline double do_threshold_estimation(unsigned int cat_doc_count,
 					     const class_d_list &bit_string,
 					     double &threshold)
 {
@@ -409,43 +499,59 @@ static inline double do_threshold_estimation(unsigned int a,
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
 
-  if (a == 0) {
+  if (cat_doc_count == 0) {
     /* Cat has no doc.
      * This corresponds to the set of cases {0, 00, 000, ...}
-     * So, the action mentioned in the above explanation in the case where all
-     * bits are zero is applied.
+     * So, the action mentioned in the explanation in function estimate_Th in
+     * the case where all bits are zero is applied.
      */
     threshold = 1.5 * bit_string.rbegin()->first;
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
 
   unsigned int b = 0;
-  unsigned int c = a;
+  unsigned int c = cat_doc_count;
   class_d_list::const_reverse_iterator prev_bit = bit_string.rend();
   for (class_d_list::const_reverse_iterator bit = bit_string.rbegin();
        bit != bit_string.rend();
        bit++)
     {
+#ifdef BE_VERBOSE
+      print_bit(bit, cat_doc_count);
+#endif
+
       unsigned int next_c = c - bit->second.first;
       unsigned int next_b = b + bit->second.second;
 
       if (next_b > next_c) {
-	double prev_diff = get_precision(a - c, b) - get_recall(a - c, c);
-	double curr_diff = (get_recall(a - next_c, next_c)
-			    - get_precision(a - next_c, next_b));
-
+	double prev_diff = (get_precision(cat_doc_count - c, b)
+			    - get_recall(cat_doc_count - c, c));
+	double curr_diff = (get_recall(cat_doc_count - next_c, next_c)
+			    - get_precision(cat_doc_count - next_c, next_b));
+#ifdef BE_VERBOSE
+	fprintf(stderr, "prev_diff %f, curr_diff %f\n", prev_diff, curr_diff);
+#endif
 	if (prev_diff > curr_diff) {
 	  b = next_b;
 	  c = next_c;
 	  threshold = bit->first;
+#ifdef BE_VERBOSE
+	  fprintf(stderr, "b > c: threshold := bit (%f)\n", threshold);
+#endif
 	} else {
 	  threshold = prev_bit->first;
+#ifdef BE_VERBOSE
+	  fprintf(stderr, "b > c: threshold := prev_bit (%f)\n", threshold);
+#endif
 	}
 	break;
       }	else if (next_b == next_c) {
 	b = next_b;
 	c = next_c;
 	threshold = bit->first;
+#ifdef BE_VERBOSE
+	fprintf(stderr, "b = c: threshold := bit (%f)\n", threshold);
+#endif
 	break;
       } else {
 	c -= bit->second.first;
@@ -455,7 +561,17 @@ static inline double do_threshold_estimation(unsigned int a,
     }
 
   /* Interpolated BEP */
-  return 0.5 * (get_precision(a - c, b) + get_recall(a - c, c));
+  double precision = get_precision(cat_doc_count - c, b);
+  double recall = get_recall(cat_doc_count - c, c);
+
+#ifdef BE_VERBOSE
+  fprintf(stderr,
+	  "a = %u, b = %u, c = %u\n"
+	  "precision = %f, recall = %f\n",
+	  cat_doc_count - c, b, c, precision, recall);
+#endif
+
+  return 0.5 * (precision + recall);
 }
 
 #ifndef NDEBUG
@@ -465,6 +581,10 @@ static inline void test_do_threshold_estimation(void)
   class_d_list bit_string;
   double Th = 0;
   double deviation;
+
+#ifdef BE_VERBOSE
+  fprintf(stderr, "*test_do_threshold_estimation():\n");
+#endif
 
   /* 1) 1101001 can be divided into 1101 and 001 where b = c = 1 and a = 3 */
   bit_string[40].first += 1;
@@ -642,15 +762,20 @@ If no bit exists like in Example 4, the threshold is 0.
   class_d_list d_list;
 
   /* Classify all docs that belong to the target category */
-  unsigned int a = 0;
+  unsigned int cat_doc_count = 0;
   for (class_docs::const_iterator i = target_cat_docs.begin();
        i != target_cat_docs.end();
        i++)
     {
       double dot_prod
 	= dot_product_sparse_vector(**i, target_cat_classifier.second);
-      d_list[dot_prod].first++;
-      a++;
+      class_d_list_entry &entry = d_list[dot_prod];
+      cat_doc_count++;
+      entry.first++;
+
+#ifdef BE_VERBOSE
+      entry.first_docs.push_back(&w_to_doc_name[*i]);
+#endif
     }
   /* End of classifying the target category's docs */
 
@@ -670,132 +795,148 @@ If no bit exists like in Example 4, the threshold is 0.
 	{
 	  double dot_prod
 	    = dot_product_sparse_vector(**j, target_cat_classifier.second);
-	  d_list[dot_prod].second++;
+	  class_d_list_entry &entry = d_list[dot_prod];
+	  entry.second++;
+
+#ifdef BE_VERBOSE
+	  entry.second_docs.push_back(&w_to_doc_name[*j]);
+#endif
 	}
     }
   /* End of classifying all docs not in the target category */
 
-  return do_threshold_estimation(a,
-				 d_list, target_cat_classifier.first.threshold);
+#ifdef BE_VERBOSE
+  fprintf(stderr, "Threshold estimation on %s (c = %u = |C|)\n",
+	  target_cat_name.c_str(), cat_doc_count);
+#endif
+  
+  double interpolated_BEP
+    = do_threshold_estimation(cat_doc_count, d_list,
+			      target_cat_classifier.first.threshold);
+
+#ifdef BE_VERBOSE
+  fprintf(stderr, "Interpolated BEP = %f\n", interpolated_BEP);
+#endif
+
+  return interpolated_BEP;
 }
 
 #ifndef NDEBUG
 /* The test cases are taken from the explanation given in estimate_Th */
 static inline void test_estimate_Th(void)
 {
+  class_doc_cat_list gold_standard;
+  class_w_cats_list all_docs;
+  class_unique_docs_for_estimating_Th unique_docs;
   class_cat_doc_list cat_doc_list;
   string target_cat_name("X");
   class_classifier target_cat_classifier;
   double deviation;
-  class_docs *docs;
 
   target_cat_classifier.second[0] = 1;
 
+#define __make_doc(cat_name, doc_name, first_w_entry) do {	\
+    class_set_of_cats &cats = gold_standard[doc_name];		\
+    cats.insert(cat_name);					\
+    all_docs.push_back(class_w_cats());				\
+    class_w_cats &doc = all_docs.back();			\
+    doc.second = &cats;						\
+    doc.first[0] = first_w_entry;				\
+    unique_docs.push_back(&doc);				\
+  } while (0)
+
+#define __reset_test_case() do {		\
+    gold_standard.clear();			\
+    cat_doc_list.clear();			\
+    unique_docs.clear();			\
+    all_docs.clear();				\
+    target_cat_classifier.first.threshold = 0;	\
+  } while (0)
+
+#define __do_test(expected_interpolated_BEP, expected_Th) do {		\
+    /* Check interpolated BEP */					\
+    deviation = (estimate_Th(cat_doc_list,				\
+			     target_cat_name,				\
+			     target_cat_classifier)			\
+		 - (expected_interpolated_BEP));			\
+    assert(((deviation < 0)						\
+	    ? (-deviation)						\
+	    : deviation) < FP_COMPARISON_DELTA);			\
+    /* Check Th */							\
+    deviation = target_cat_classifier.first.threshold - (expected_Th);	\
+    assert(((deviation < 0)						\
+	    ? (-deviation)						\
+	    : deviation) < FP_COMPARISON_DELTA);			\
+  } while (0)
+
+#ifdef BE_VERBOSE
+
+  fprintf(stderr, "*test_estimate_Th():\n");
+
+#define make_doc(cat_name, doc_name, first_w_entry) do {	\
+    __make_doc(cat_name, doc_name, first_w_entry);		\
+    class_w_cats &doc = all_docs.back();			\
+    cat_doc_list[cat_name].insert(&doc.first);			\
+    w_to_doc_name[&doc.first] = doc_name;			\
+  } while (0)
+#define reset_test_case() do {			\
+    __reset_test_case();			\
+    w_to_doc_name.clear();			\
+  } while (0)
+#define do_test(test_name, expected_interpolated_BEP, expected_Th) do {	\
+    fprintf(stderr, "** " test_name ":\n");				\
+    __do_test(expected_interpolated_BEP, expected_Th);			\
+  } while (0)
+
+#else /* !BE_VERBOSE */
+
+#define make_doc(cat_name, doc_name, first_w_entry) do {	\
+    __make_doc(cat_name, doc_name, first_w_entry);		\
+    class_w_cats &doc = all_docs.back();			\
+    cat_doc_list[cat_name].push_back(&doc.first);		\
+  } while (0)
+#define reset_test_case() do {			\
+    __reset_test_case();			\
+  } while (0)
+#define do_test(test_name, expected_interpolated_BEP, expected_Th) do {	\
+    __do_test(expected_interpolated_BEP, expected_Th);			\
+  } while (0)
+#endif /* !BE_VERBOSE */
+
+#define make_empty_cat(cat_name) do {		\
+    all_docs.push_back(class_w_cats());		\
+    class_w_cats &doc = all_docs.back();	\
+    doc.second = NULL;				\
+    cat_doc_list[cat_name];			\
+  } while (0)
+
   /* 1) 1101001 can be divided into 1101 and 001 where b = c = 1 and a = 3 */
-  docs = &cat_doc_list["X"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.3;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.4;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.7;
-  docs = &cat_doc_list["Y"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 6.7;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.1;
-  docs = &cat_doc_list["Z"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.9;
-  deviation = (estimate_Th(cat_doc_list, target_cat_name, target_cat_classifier)
-	       - 0.75);
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  deviation = target_cat_classifier.first.threshold - 5.4;
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  for (class_cat_doc_list::iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      for (class_docs::iterator j = i->second.begin();
-	   j != i->second.end();
-	   j++)
-	{
-	  delete (*j);
-	}
-    }
-  cat_doc_list.clear();
-  target_cat_classifier.first.threshold = 0;
+  make_doc("X", "d1", 7.3); // 1
+  make_doc("X", "d2", 7.1); // 1
+  make_doc("Y", "d3", 6.7); // 0
+  make_doc("X", "d4", 5.4); // 1
+  make_doc("Y", "d5", 5.1); // 0
+  make_doc("Z", "d6", 4.9); // 0
+  make_doc("X", "d7", 4.7); // 1
+  do_test("Case 1", 0.75, 5.4);
+  reset_test_case();
 
   /* 2) 1 can be divided into 1 and nothing where b = c = 0 and a = 1 */
-  docs = &cat_doc_list["X"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.3;
-  deviation = (estimate_Th(cat_doc_list, target_cat_name, target_cat_classifier)
-	       - 1);
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  deviation = target_cat_classifier.first.threshold - 7.3;
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  for (class_cat_doc_list::iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      for (class_docs::iterator j = i->second.begin();
-	   j != i->second.end();
-	   j++)
-	{
-	  delete (*j);
-	}
-    }
-  cat_doc_list.clear();
-  target_cat_classifier.first.threshold = 0;
+  make_doc("X", "d1", 7.3); // 1
+  do_test("Case 2", 1, 7.3);
+  reset_test_case();
 
   /* 3) 0 can be divided into nothing and 0 where b = c = 0 and a = 0 */
-  docs = &cat_doc_list["X"];
-  docs = &cat_doc_list["Y"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.3;
-  deviation = (estimate_Th(cat_doc_list, target_cat_name, target_cat_classifier)
-	       - 1);
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  deviation = target_cat_classifier.first.threshold - 1.5 * 7.3;
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  for (class_cat_doc_list::iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      for (class_docs::iterator j = i->second.begin();
-	   j != i->second.end();
-	   j++)
-	{
-	  delete (*j);
-	}
-    }
-  cat_doc_list.clear();
-  target_cat_classifier.first.threshold = 0;
+  make_empty_cat("X"); // nothing
+  make_doc("Y", "d1", 7.3);  // 0
+  do_test("Case 3", 1, 1.5 * 7.3);
+  reset_test_case();
 
   /* 4) nothing can be divided into nothing and nothing where b = c = 0 */
-  docs = &cat_doc_list["X"];
-  docs = &cat_doc_list["Y"];
-  deviation = (estimate_Th(cat_doc_list, target_cat_name, target_cat_classifier)
-	       - 1);
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  deviation = target_cat_classifier.first.threshold - 0;
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  for (class_cat_doc_list::iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      for (class_docs::iterator j = i->second.begin();
-	   j != i->second.end();
-	   j++)
-	{
-	  delete (*j);
-	}
-    }
-  cat_doc_list.clear();
-  target_cat_classifier.first.threshold = 0;
+  make_empty_cat("X"); // nothing
+  make_empty_cat("Y"); // nothing
+  do_test("Case 4", 1, 0);
+  reset_test_case();
 
   /* 5) Duplicated values:
    * 1100101100
@@ -803,82 +944,35 @@ static inline void test_estimate_Th(void)
    *  1 0 1  1
    *  0 0 0  1
    */
-  docs = &cat_doc_list["X"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.3;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.3;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.4;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.2;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.7;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.7;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.2;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3;
-  docs = &cat_doc_list["Y"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.8;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.7;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3.1;
-  docs = &cat_doc_list["Z"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 7.1;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.4;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.4;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.7;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3;
-  docs = &cat_doc_list["W"];
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 5.4;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 4.2;
-  docs->push_back(new class_sparse_vector());
-  (*docs->back())[0] = 3.1;
-  deviation = (estimate_Th(cat_doc_list, target_cat_name, target_cat_classifier)
-	       - 0.5 * (6.0/12.0 + 6.0/13.0));
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  deviation = target_cat_classifier.first.threshold - 5.2;
-  assert(((deviation < 0) ? (-deviation) : deviation) < FP_COMPARISON_DELTA);
-  for (class_cat_doc_list::iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      for (class_docs::iterator j = i->second.begin();
-	   j != i->second.end();
-	   j++)
-	{
-	  delete (*j);
-	}
-    }
-  cat_doc_list.clear();
-  target_cat_classifier.first.threshold = 0;
+  make_doc("X", "d1", 7.3); make_doc("X", "d2", 7.3);   // 11
+  make_doc("X", "d3", 7.1); make_doc("Y", "d4", 7.1);   // 1010
+  make_doc("X", "d5", 7.1); make_doc("Z", "d6", 7.1);
+  make_doc("Y", "d7", 5.8);                             // 0
+  make_doc("W", "d8", 5.4); make_doc("X", "d9", 5.4);   // 0100
+  make_doc("Z", "d10", 5.4); make_doc("Z", "d11", 5.4);
+  make_doc("X", "d12", 5.2);                            // 1
+  make_doc("Z", "d13", 4.7); make_doc("X", "d14", 4.7); // 0110
+  make_doc("X", "d15", 4.7); make_doc("Y", "d16", 4.7);
+  make_doc("X", "d17", 4.2); make_doc("W", "d18", 4.2); // 10
+  make_doc("X", "d19", 4.1);                            // 1
+  make_doc("W", "d20", 3.1); make_doc("Y", "d21", 3.1); // 0011
+  make_doc("X", "d22", 3.1); make_doc("X", "d23", 3.1);
+  make_doc("Z", "d24", 3); make_doc("X", "d25", 3);     // 01
+  do_test("Case 5", 0.5 * (6.0/12.0 + 6.0/13.0), 5.2);
+  reset_test_case();
+
+#undef reset_test_case
+#undef make_doc
+#undef make_empty_cat
+#undef do_test
+#ifdef BE_VERBOSE
+  #undef __make_doc
+  #undef __do_test
+  #undef __reset_test_case
+#endif
 }
 #endif /* NDEBUG of test_test_estimate_Th() */
 
-static class_ES ES;
 static unsigned int ES_percentage_set = 0;
 static unsigned int ES_percentage;
 static const unsigned int PERCENTAGE_MULTIPLIER = 1000000;
@@ -1112,22 +1206,26 @@ MAIN_INPUT_START
 }
 MAIN_INPUT_END /* All w vectors are stored in LS */
 
-construct_cat_profile_list(LS.second, cat_doc_list);
-
-prepare_Ws(LS.second, cat_doc_list);
+construct_cat_profile_list(cat_profile_list(LS), cat_doc_list(LS));
+prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
 
 /* Parameter tuning */
 typedef unordered_map<string /* cat name */, double> class_P_avg_list;
 class_P_avg_list P_avg_list;
 for (unsigned int i = 0; i < ES_count; i++)
   {
-    class_cat_doc_list &ES_cat_doc_list = ES.first.first;
-    class_cat_doc_list &LS_min_ES_cat_doc_list = ES.first.second;
+#ifdef BE_VERBOSE
+    fprintf(stderr, "*ES #%u:\n", i);
+#endif
+
+    class_data ES; // will only store documents for estimation
+    class_data LS_min_ES; /* store everything to build W vectors but the
+			   * documents needed to perform Th estimation
+			   */
 
     /* Construct ES and LS-ES*/
-    class_w_cats_list &all_w_cats = LS.first;
-    for (class_w_cats_list::iterator j = all_w_cats.begin();
-	 j != all_w_cats.end();
+    for (class_w_cats_list::iterator j = all_unique_docs.begin();
+	 j != all_unique_docs.end();
 	 j++)
       {
 	bool in_ES = ((uniform_deviate(rand()) * PERCENTAGE_MULTIPLIER)
@@ -1138,7 +1236,11 @@ for (unsigned int i = 0; i < ES_count; i++)
 
 	  if (in_excluded_categories) {
 
-	    ES_cat_doc_list[""].push_back(&j->first);
+#ifdef BE_VERBOSE
+	    cat_doc_list(ES)[""].insert(&j->first);
+#else
+	    cat_doc_list(ES)[""].push_back(&j->first);
+#endif
 	  } else {
 
 	    const class_set_of_cats &GS = *(j->second);
@@ -1146,43 +1248,59 @@ for (unsigned int i = 0; i < ES_count; i++)
 		 k != GS.end();
 		 k++)
 	      {
-		ES_cat_doc_list[*k].push_back(&j->first);
+
+#ifdef BE_VERBOSE
+		cat_doc_list(ES)[*k].insert(&j->first);
+#else
+		cat_doc_list(ES)[*k].push_back(&j->first);
+#endif
 	      }
 	  }
 	} else {
 
 	  if (in_excluded_categories) {
 
-	    ES.second.first++;
-	    LS_min_ES_cat_doc_list[""].push_back(&j->first);
+	    all_cats_cardinality(LS_min_ES)++;
+
+#ifdef BE_VERBOSE
+	    cat_doc_list(LS_min_ES)[""].insert(&j->first);
+#else
+	    cat_doc_list(LS_min_ES)[""].push_back(&j->first);
+#endif
 	  } else {
 
 	    const class_set_of_cats &GS = *(j->second);
 
-	    ES.second.first += GS.size();
+	    all_cats_cardinality(LS_min_ES) += GS.size();
 	    for (class_set_of_cats::const_iterator k = GS.begin();
 		 k != GS.end();
 		 k++)
 	      {
-		LS_min_ES_cat_doc_list[*k].push_back(&j->first);
+#ifdef BE_VERBOSE
+		cat_doc_list(LS_min_ES)[*k].insert(&j->first);
+#else
+		cat_doc_list(LS_min_ES)[*k].push_back(&j->first);
+#endif
 	      }
 	  }
 	}
       }
     /* End of constructions */
 
-    construct_cat_profile_list(ES.second.second, LS_min_ES_cat_doc_list);
+    construct_cat_profile_list(cat_profile_list(LS_min_ES),
+			       cat_doc_list(LS_min_ES));
 
-    prepare_Ws(ES.second.second, LS_min_ES_cat_doc_list);
-
-    class_cat_profile_list &ES_cat_profile = ES.second.second;
+    prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
 
     for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
       {
-	construct_Ws(ES_cat_profile, ES.second.first, P);
+	construct_Ws(cat_profile_list(LS_min_ES),
+		     all_cats_cardinality(LS_min_ES),
+		     P);
 
-	for (class_cat_profile_list::iterator j = ES_cat_profile.begin();
-	     j != ES_cat_profile.end();
+	for (class_cat_profile_list::iterator j
+	       = cat_profile_list(LS_min_ES).begin();
+	     j != cat_profile_list(LS_min_ES).end();
 	     j++)
 	  {
 	    if (j->first.empty()) { // Don't consider excluded categories
@@ -1193,14 +1311,15 @@ for (unsigned int i = 0; i < ES_count; i++)
 	    class_classifier &cat_classifier = j->second.second;
 	    class_W_property &prop = cat_classifier.first;
 
-	    prop.update_BEP_max(estimate_Th(ES_cat_doc_list,
+	    prop.update_BEP_max(estimate_Th(cat_doc_list(ES),
 					    cat_name, cat_classifier),
 				P);	   
 	  }
       }
 
-    for (class_cat_profile_list::iterator j = ES_cat_profile.begin();
-	 j != ES_cat_profile.end();
+    for (class_cat_profile_list::iterator j
+	   = cat_profile_list(LS_min_ES).begin();
+	 j != cat_profile_list(LS_min_ES).end();
 	 j++)
       {
 	if (j->first.empty()) { // Don't consider excluded categories
@@ -1210,18 +1329,10 @@ for (unsigned int i = 0; i < ES_count; i++)
 	class_W_property &prop = j->second.second.first;
 
 	P_avg_list[j->first] += prop.P_max;
-	prop.ES_reset();
       }
-    
-    /* Clean up */
-    ES_cat_doc_list.clear();
-    LS_min_ES_cat_doc_list.clear();
-    ES.second.first = 0;
-    ES.second.second.clear();
-    /* End of cleaning up */
   }
-for (class_cat_profile_list::iterator i = LS.second.begin();
-     i != LS.second.end();
+for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+     i != cat_profile_list(LS).end();
      i++)
   {
     if (i->first.empty()) { // Don't consider excluded categories
@@ -1233,11 +1344,14 @@ for (class_cat_profile_list::iterator i = LS.second.begin();
   }
 /* End of parameter tuning */
 
-construct_Ws(LS.second, all_cats_cardinality, ((ES_count == 0)
-					       ? tuning_init : -1));
+construct_Ws(cat_profile_list(LS), all_cats_cardinality(LS),
+	     ((ES_count == 0) ? tuning_init : -1));
 
-for (class_cat_profile_list::iterator i = LS.second.begin();
-     i != LS.second.end();
+#ifdef BE_VERBOSE
+fprintf(stderr, "*LS:\n");
+#endif
+for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+     i != cat_profile_list(LS).end();
      i++)
   {
     if (i->first.empty()) { // Don't consider excluded categories
@@ -1246,9 +1360,9 @@ for (class_cat_profile_list::iterator i = LS.second.begin();
 
     class_classifier &cat_classifier = i->second.second;
     class_W_property &prop = cat_classifier.first;
-    prop.BEP = estimate_Th(cat_doc_list, i->first, i->second.second);
+    prop.BEP = estimate_Th(cat_doc_list(LS), i->first, i->second.second);
   }
 
-output_classifiers(LS.second);
+output_classifiers(cat_profile_list(LS));
 
 MAIN_END

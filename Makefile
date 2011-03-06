@@ -10,10 +10,11 @@ CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier perf_measurer
 OBJECTS := tokenizer.o tf.o idf_dic.o \
 	w_to_vector.o reader_vec.o rocchio.o classifier.o perf_measurer.o
 
-COMMON_COMPILER_FLAGS := -Wall -O3 $(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
+COMMON_COMPILER_FLAGS := -Wall $(if $(DONT_OPTIMIZE),-g3,-O3) \
+	$(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
 
-NDEBUG := -DNDEBUG
-CPPFLAGS := $(NDEBUG) -DBUFFER_SIZE=4096 -DOS_PATH_DELIMITER=\'/\'
+DEBUGGING := $(if $(DEBUG),,-DNDEBUG) $(if $(BE_VERBOSE),-DBE_VERBOSE)
+CPPFLAGS := $(DEBUGGING) -DBUFFER_SIZE=4096 -DOS_PATH_DELIMITER=\'/\'
 CFLAGS := $(COMMON_COMPILER_FLAGS)
 CXXFLAGS := -std=c++0x $(COMMON_COMPILER_FLAGS)
 
