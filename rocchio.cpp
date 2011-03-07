@@ -674,11 +674,13 @@ static inline void test_do_threshold_estimation(void)
 /**
  * It is a programming error if cat_doc_list does not contain target_cat_name.
  *
- * @param cat_doc_list the docs used to estimate the threshold
+ * @param unique_docs the docs used to estimate the threshold
+ * @param cat_doc_list is used to check for category emptiness
  *
  * @return interpolated BEP associated with the estimated threshold
  */
-static inline double estimate_Th(const class_cat_doc_list &cat_doc_list,
+static inline double estimate_Th(class_unique_docs_for_estimating_Th unique_docs,
+				 const class_cat_doc_list &cat_doc_list,
 				 const string &target_cat_name,
 				 class_classifier &target_cat_classifier)
 {
@@ -736,77 +738,59 @@ If no bit exists like in Example 4, the threshold is 0.
      */
 
     double max_dot_product = 0; // dot product w and W cannot be < 0
-    for (class_cat_doc_list::const_iterator i = cat_doc_list.begin();
-	 i != cat_doc_list.end();
+    for (class_unique_docs_for_estimating_Th::const_iterator i
+	   = unique_docs.begin();
+	 i != unique_docs.end();
 	 i++)
       {
-	if (t == i) {
-	  continue;
+	double result
+	  = dot_product_sparse_vector((*i)->first,
+				      target_cat_classifier.second);
+	if (result > max_dot_product) {
+	  max_dot_product = result;
 	}
-
-	const class_docs &i_docs = i->second;
-	for (class_docs::const_iterator j = i_docs.begin();
-	     j != i_docs.end();
-	     j++)
-	  {
-	    double result
-	      = dot_product_sparse_vector(**j, target_cat_classifier.second);
-	    if (result > max_dot_product) {
-	      max_dot_product = result;
-	    }
-	  }
       }
     
     target_cat_classifier.first.threshold = 1.5 * max_dot_product;
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
 
-  const class_docs &target_cat_docs = t->second;
   class_d_list d_list;
 
-  /* Classify all docs that belong to the target category */
+  /* Constructing the bits */
   unsigned int cat_doc_count = 0;
-  for (class_docs::const_iterator i = target_cat_docs.begin();
-       i != target_cat_docs.end();
+  for (class_unique_docs_for_estimating_Th::const_iterator i
+	 = unique_docs.begin();
+       i != unique_docs.end();
        i++)
     {
       double dot_prod
-	= dot_product_sparse_vector(**i, target_cat_classifier.second);
+	= dot_product_sparse_vector((*i)->first, target_cat_classifier.second);
       class_d_list_entry &entry = d_list[dot_prod];
-      cat_doc_count++;
-      entry.first++;
+
+      class_set_of_cats *doc_GS = (*i)->second;
+      int bit_belongs_to_target_cat = (doc_GS != NULL // doc is in excluded cat
+				       && (doc_GS->find(target_cat_name)
+					   != doc_GS->end()));
+
+      if (bit_belongs_to_target_cat) {
+
+	cat_doc_count++;
+	entry.first++;
 
 #ifdef BE_VERBOSE
-      entry.first_docs.push_back(&w_to_doc_name[*i]);
+	entry.first_docs.push_back(&w_to_doc_name[&(*i)->first]);
 #endif
-    }
-  /* End of classifying the target category's docs */
+      } else {
 
-  /* Classify all docs that do not belong to the target category */
-  for (class_cat_doc_list::const_iterator i = cat_doc_list.begin();
-       i != cat_doc_list.end();
-       i++)
-    {
-      if (t == i) {
-	continue;
+	entry.second++;
+
+#ifdef BE_VERBOSE
+	entry.second_docs.push_back(&w_to_doc_name[&(*i)->first]);
+#endif
       }
-
-      const class_docs &i_docs = i->second;
-      for (class_docs::const_iterator j = i_docs.begin();
-	   j != i_docs.end();
-	   j++)
-	{
-	  double dot_prod
-	    = dot_product_sparse_vector(**j, target_cat_classifier.second);
-	  class_d_list_entry &entry = d_list[dot_prod];
-	  entry.second++;
-
-#ifdef BE_VERBOSE
-	  entry.second_docs.push_back(&w_to_doc_name[*j]);
-#endif
-	}
     }
-  /* End of classifying all docs not in the target category */
+  /* End of bits construction */
 
 #ifdef BE_VERBOSE
   fprintf(stderr, "Threshold estimation on %s (c = %u = |C|)\n",
@@ -858,7 +842,8 @@ static inline void test_estimate_Th(void)
 
 #define __do_test(expected_interpolated_BEP, expected_Th) do {		\
     /* Check interpolated BEP */					\
-    deviation = (estimate_Th(cat_doc_list,				\
+    deviation = (estimate_Th(unique_docs,				\
+			     cat_doc_list,				\
 			     target_cat_name,				\
 			     target_cat_classifier)			\
 		 - (expected_interpolated_BEP));			\
@@ -1237,6 +1222,8 @@ for (unsigned int i = 0; i < ES_count; i++)
 
 	if (in_ES) {
 
+	  unique_docs(ES).push_back(&(*j));
+
 	  if (in_excluded_categories) {
 
 #ifdef BE_VERBOSE
@@ -1260,6 +1247,11 @@ for (unsigned int i = 0; i < ES_count; i++)
 	      }
 	  }
 	} else {
+
+	  /* unique_docs(LS_min_ES) is not updated because no estimation is
+	   * carried out in LS_min_ES although cat_doc_list(LS_min_ES) needs to
+	   * be constructed to build the profile vectors
+	   */
 
 	  if (in_excluded_categories) {
 
@@ -1314,7 +1306,7 @@ for (unsigned int i = 0; i < ES_count; i++)
 	    class_classifier &cat_classifier = j->second.second;
 	    class_W_property &prop = cat_classifier.first;
 
-	    prop.update_BEP_max(estimate_Th(cat_doc_list(ES),
+	    prop.update_BEP_max(estimate_Th(unique_docs(ES), cat_doc_list(ES),
 					    cat_name, cat_classifier),
 				P);	   
 	  }
@@ -1363,7 +1355,8 @@ for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
 
     class_classifier &cat_classifier = i->second.second;
     class_W_property &prop = cat_classifier.first;
-    prop.BEP = estimate_Th(cat_doc_list(LS), i->first, i->second.second);
+    prop.BEP = estimate_Th(unique_docs(LS), cat_doc_list(LS),
+			   i->first, i->second.second);
   }
 
 output_classifiers(cat_profile_list(LS));
