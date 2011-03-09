@@ -319,7 +319,7 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 
       const class_docs &cat_docs = e->second;
 
-      cat_W_construction.second += cat_docs.size(); // |C|
+      cat_W_construction.second = cat_docs.size(); // |C|
       for (class_docs::const_iterator j = cat_docs.begin(); // sum all w
 	   j != cat_docs.end();
 	   j++)
@@ -336,31 +336,33 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 				const unsigned int all_cats_cardinality,
 				double P)
 {
-  /* In this implementation, each category in the category profile has its
-   * sum of w vectors that have the category in their gold standards.
+  /* In this implementation, each category C in the category profile has its
+   * sum of w vectors that have the category C in their gold standards.
    * So, to obtain the W vector of a category C, the sum of w vectors not in C
    * is simply subtracted from the sum of w vectors in C according to Rocchio
    * formula. Of course, the summations and subtraction involve some weightings.
    *
    * The key to make this process fast is to keep the sparsity of the vector.
-   * Therefore, if each category in addition to having its sum of w vectors
-   * also carries the sum of w vectors not in the category, although each
-   * category has all the information to obtain the W vector (i.e., there
-   * is no need to obtain the sum of w vectors not in the category by inquiring
-   * other categories), the sum of w vectors not in the category is not a
-   * sparse vector anymore. Beside eating up memory space, the operation with
-   * non-sparse vector might have more page faults. In fact, I have implemented
-   * this scheme and the performance is around 20s while the current
-   * implementation is only 1.5s with w vectors generated from Reuters-115.
+   * Therefore, if each category C in addition to having its sum of w vectors
+   * also carries the sum of w vectors not in the category C, although each
+   * category C has all the information to obtain the W vector (i.e., there
+   * is no need to obtain the sum of w vectors not in the category C by
+   * inquiring other categories not in C), the sum of w vectors not in the
+   * category C is not a sparse vector anymore. Beside eating up memory space,
+   * the operation with non-sparse vector might have more page faults. In fact,
+   * I have implemented this scheme and the performance is around 20s while the
+   * current implementation is only 1.5s with w vectors generated from
+   * Reuters-115.
    *
    * I also tried to do the subtraction process by walking through elements in
-   * W instead of walking through categories not in the category having the W.
-   * In this way, once an element in W is less than 0, there is no need to
+   * W instead of walking through categories other than the category having the
+   * W. In this way, once an element in W is less than 0, there is no need to
    * continue walking through the remaining other categories. But, the
    * performance is about 1.7s. I think this is because I cannot delete the
    * element in W that is less than 0 during the walk. So, there might be some
    * overhead associated with registering the elements to be deleted later.
    * Additionally, page faults and cache misses might increase as well.
+   *
    * Therefore, in this implementation, I walk through all other categories at
    * each step of which I subtract the sum of w vectors of the other category
    * from the W vector.
@@ -384,7 +386,12 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 
       /* The first term. If C_cardinality == 0, sum_w_in_C should be all zeros
        * (i.e., the sparse vector is empty), and so, W should be empty too  */
-      assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
+      if (C_cardinality == 0) {
+	W.clear();
+	continue; // W is already all 0. There is no point to do subtraction.
+      } else {
+	assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
+      }
 
       /* Adjusting P if P is < 0 */
       if (P == -1) {
@@ -393,8 +400,7 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       /* End of adjustment */
 
       /* The second term, the penalizing part. P is assumed to be >= 0.0 */
-      if (fpclassify(P) != FP_ZERO && C_cardinality != 0
-	  && not_C_cardinality != 0)
+      if (fpclassify(P) != FP_ZERO && not_C_cardinality != 0)
 	{
 	  double multiplier = P / static_cast<double>(not_C_cardinality);
 
@@ -423,7 +429,11 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 
 		  W_e->second -= multiplier * k->second;
 
-		  if (W_e->second < 0) // max {0, ...
+		  /* If W_e->second is zero, it must be removed since this is
+		   * a sparse vector. And, due to floating-point error, the
+		   * zero can be a bit higher than the true zero.
+		   */
+		  if (W_e->second < FP_COMPARISON_DELTA) // max {0, ...
 		    {
 		      W.erase(W_e); // since W is a sparse vector
 		    }
