@@ -203,45 +203,49 @@ file_doc_cat_perf_measure_training=$tmp_dir/training_set_perf_measure_doc_cat.tx
 
 # Start of common functions
 
-# $1 is the template directory
-# $2 is the construction directory
+# $1 is the corpus training/testing directory
+# $2 is the resulting directory to store processed files from directory in $1
 function create_dir_struct {
-    find $1 -mindepth 1 -maxdepth 1 -type d \
-    	| sed -e 's%.*/\(.*\)%'$2'/\1%' \
-    	| xargs -x mkdir -p
+    repo_dir=$2/repo
+
+    mkdir -p $repo_dir
+
+    # This will kill all docs assigned to multiple categories
+    cp -u -- $1/*/* $repo_dir
 }
 
-# $1 is the document directory
-# $2 is the result directory
+# $1 is the directory produced by function create_dir_struct
 function tokenization_and_tf_calculation {
-    for directory in `ls $2`; do
-	cat=$1/$directory
-	for file in `ls $cat`; do
- 	    ($tokenizer $cat/$file \
-		| $tf -o $2/$directory/$file) &
-	done
-    done; wait
+    repo_dir=$1/repo
+
+    for file in `ls $repo_dir`; do
+ 	($tokenizer $repo_dir/$file | $tf -o $1/$file) &
+    done
+
+    wait
 }
 
-# $1 is the leading path before the directory having the category name
 function get_doc_cat {
-    sed -e 's%'$1'/\(.*\)/\(.*\)%\2 \1%'
+    # Just swap the location of dir name and file name
+    sed -e 's%\(.*\)/\(.*\)%\2 \1%'
 }
 
-# $1 is the TF files directory
-# $2 is the resulting DOC file
-# $3 is the resulting DOC_CAT file
+# $1 is the corpus training/testing directory
+# $2 is the directory produced by function create_dir_struct
+# $3 is the resulting DOC file containing the paths to each TF file of each 
+#       unique doc across all cats
+# $4 is the resulting DOC_CAT file containing docs across all cats other than
+#       the excluded cat
 function DOC_and_DOC_CAT_files_generation {
-    find $1 -mindepth 2 -type f \
-	| tee $2 \
-	| get_doc_cat $1 \
-	| grep -v $excluded_cat > $3
+    find $2 -maxdepth 1 -type f > $3
+    find $1 -mindepth 2 -type f -printf '%P\n' | get_doc_cat \
+	| grep -v $excluded_cat\$ > $4
 }
 
-# $1 is the TF files directory
-# $2 is the resulting DOC_CAT file
+# $1 is the corpus training/testing directory
+# $2 is the resulting DOC_CAT file containing docs across all cats.
 function perf_measure_DOC_CAT_files_generation {
-    find $1 -mindepth 2 -type f | get_doc_cat $1 > $2
+    find $1 -mindepth 2 -type f -printf '%P\n' | get_doc_cat > $2
 }
 
 # $1 is the DOC file
@@ -263,15 +267,15 @@ function step_0 {
 
 function step_1 {
     echo -n "1. [TRAINING] Tokenization and TF calculation..."
-    time (tokenization_and_tf_calculation $training_dir $tmp_training_dir) \
+    time (tokenization_and_tf_calculation $tmp_training_dir) \
 	|| exit 1
 }
 
 function step_2 {
     echo -n "2. [TRAINING] DOC and DOC_CAT files generation..."
-    time (DOC_and_DOC_CAT_files_generation $tmp_training_dir \
+    time (DOC_and_DOC_CAT_files_generation $training_dir $tmp_training_dir \
 	$file_doc_training $file_doc_cat_training \
-	&& perf_measure_DOC_CAT_files_generation $tmp_training_dir \
+	&& perf_measure_DOC_CAT_files_generation $training_dir \
 	   $file_doc_cat_perf_measure_training) \
 	|| exit 1
 }
@@ -298,15 +302,15 @@ function step_5 {
 
 function step_6 {
     echo -n "6. [TESTING] Tokenization and TF calculation..."
-    time (tokenization_and_tf_calculation $testing_dir $tmp_testing_dir) \
+    time (tokenization_and_tf_calculation $tmp_testing_dir) \
 	|| exit 1
 }
 
 function step_7 {
     echo -n "7. [TESTING] DOC and DOC_CAT files generation..."
-    time (DOC_and_DOC_CAT_files_generation $tmp_testing_dir \
+    time (DOC_and_DOC_CAT_files_generation $testing_dir $tmp_testing_dir \
 	$file_doc_testing $file_doc_cat_testing \
-	&& perf_measure_DOC_CAT_files_generation $tmp_testing_dir \
+	&& perf_measure_DOC_CAT_files_generation $testing_dir \
 	   $file_doc_cat_perf_measure) \
 	|| exit 1
 }

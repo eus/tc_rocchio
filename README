@@ -84,7 +84,7 @@ MicroAverage: Recall: 0.710041, Precision: 0.723382, f1: 0.716649
 ** Total running time is 64.738s.
 
 * My implementation
-** Step 1. Tokenization and TF calculation takes 29.431s at CPU usage of 100.00% with user/sys ratio of 0.479. Below are some further experiments of different approaches:
+** Step 1. Tokenization and TF calculation takes 23.780s at CPU usage of 100.00% with user/sys ratio of 0.435. Below are some further experiments of different approaches:
 *** Without parallelism,
 "$exec_dir"/tokenizer $cat/$file | "$exec_dir"/tf > "$result_dir"/$directory/$file.tf
 results in:
@@ -124,9 +124,9 @@ sys	0m43.395s
 
 *** To conclude, parallelism is the way to go and piping surely incurs overhead that is justified by modifiability reason (e.g., adding stop list processing unit is very easy when pipe is used).
 
-** Step 2. IDF calculation and dictionary building takes 4.059s at CPU usage of 99.52% with user/sys ratio of 13.027.
+** Step 2. IDF calculation and dictionary building takes 3.190s at CPU usage of 96.07% with user/sys ratio of 9.788.
 
-** Step 3. Generation of w vectors for all documents takes 1.491s at CPU usage of 97.14% with user/sys ratio of 5.241 after harnessing sparse vector representation and taking file names to be processed from standard input or a file instead of passing the file names as a command-line argument. Previously, without sparse vector representation and by passing the file names as a command-line argument, it took 149.705s at CPU usage of 35.80% with user/sys ratio of 1.738 and only 3,613 documents are processed due to the limitation of the number command line arguments that can be passed into a process as described above. Below are some experiments of different approaches:
+** Step 3. Generation of w vectors for all documents takes 1.471s at CPU usage of 97.63% with user/sys ratio of 7.975 after harnessing sparse vector representation and taking file names to be processed from standard input or a file instead of passing the file names as a command-line argument. Previously, without sparse vector representation and by passing the file names as a command-line argument, it took 149.705s at CPU usage of 35.80% with user/sys ratio of 1.738 and only 3,613 documents are processed due to the limitation of the number command line arguments that can be passed into a process as described above. Below are some experiments of different approaches:
 *** Using socket in which idf_dic processing unit acts as a server and several w_to_vector processing units act as clients in which each w_to_vector processing unit takes care of only one document (see https://github.com/eus/tc_rocchio/commit/24b7db191e82d6d3f694dd6828b9cd7af0061e80),
 ( $exec_dir/w_to_vector -D /tmp/tc_rocchio/idf_dic.socket -o $file.w $file ) &
 results in:
@@ -141,25 +141,25 @@ sys	2m5.164s
 
 *** Using only one w_to_vector processing unit to load IDF_DIC file once and process all TF documents serially takes 138.011s at CPU usage of 38.31% which is 32% speed up. But, I notice that this processing unit does not have a stable performance. Last time it was around 178s. After that, it was around 150s. Although previously I thought that this was because the processing unit processes the input files one-by-one resulting in the OS scheduler disadvantaging this processing unit, it is clear now that this is because the number of command line arguments are limited by xargs resulting in more documents in one case and less documents in the other case due to different length of the absolute path of file names as a result of putting the intermediate files in deeper subdirectories in the latter case.
 
-** Step 4. Generation of PRCs (Parametrized Rocchio Classifiers), in which the classifier of any category is a binary classifer consisting of a W vector and a threshold, for all categories using 20 random (the random seed is 1) estimation sets containing 30% of training data and trying 31 different values of P from 0 to 30 with increment 1 takes 15m4.244s at CPU usage of 99.23% with user/sys ratio of 250.767. Specifically, without using any ES (i.e., only working on LS) and by using P = 1, the generation of all classifiers on the whole training set (LS) takes 5.531s at CPU usage of 93.65% with user/sys ratio of 52.958. Adding one ES, the generation of all classifiers on the whole training set (LS) using the P obtained from the ES processing takes 7.085s at CPU usage of 96.15% with user/sys ratio of 69.958. In other words, given a single value of P, one ES processing takes about 1.55 seconds (7.085s - 5.531s). The final result confirms that the average time taken by one ES processing involving only one value of P is around that ((904.244s [total time spent on all ESes for all P values and LS] - 5.531s [time spent on LS]) / 20 [the number of ESes] / 31 [the number of P values] = 1.45s).
+** Step 4. Generation of PRCs (Parametrized Rocchio Classifiers), in which the classifier of any category is a binary classifer consisting of a W vector and a threshold, for all categories using 20 random (the random seed is 1) estimation sets containing 30% of training data and trying 31 different values of P from 0 to 30 with increment 1 takes 15m8.926s at CPU usage of 99.07% with user/sys ratio of 270.245. Specifically, without using any ES (i.e., only working on LS) and by using P = 1, the generation of all classifiers on the whole training set (LS) takes 5.168s at CPU usage of 98.29% with user/sys ratio of 44.357. Adding one ES but using only one value of P = 1 takes 6.974s at CPU usage of 97.11% with user/sys ratio of 75.954. In other words, given a single value of P, one ES processing takes about 1.806s seconds (6.974s - 5.168s). The final result confirms that the average time taken by one ES processing involving only one value of P is around that ((908.926s [total time spent on all ESes for all P values and LS] - 5.168s [time spent on LS]) / 20 [the number of ESes] / 31 [the number of P values] = 1.46s).
 
 Calculating only the W vectors of all categories using a fixed value of P and without doing any threshold estimation takes 1.384s at CPU usage of 97.68% with user/sys ratio of 47.285 by using sparse vector representation. Previously without sparse vector representation, it was 4.732s at CPU usage of 97.22% but with a fatal logic error in which calculation of a profile vector is prematurely aborted by using `goto output' once an element in the vector is negative. Aside from that, only 3,613 weight vectors were processed due to an error in the processing unit w_to_vector.
 
-** Step 5. Classifying the training set itself takes 6.540s at CPU usage of 98.84% with user/sys ratio of 123.307 and obtains:
-[MacroAverage] Recall: 0.849830, Precision: 0.849830
-[MicroAverage] Recall: 0.817385, Precision: 0.817385, f1: 0.817385
+** Step 5. Classifying the training set itself takes 5.877s at CPU usage of 99.65% with user/sys ratio of 182.000 and obtains:
+[MacroAverage] Recall: 0.853578, Precision: 0.853606
+[MicroAverage] Recall: 0.833351, Precision: 0.833351, f1: 0.833351
 
 Previously in the presence of logic error due to my misunderstanding of OVA, it was 6.816s at CPU usage of 96.00% with user/sys ratio of 76.904 by using sparse vector representation and taking file names to be processed from standard input or a file. Previously without sparse vector representation and by passing the file names as a command-line argument, it took 32.982s at CPU usage of 93.60% with user/sys ratio of 42.362 although only 3,613 weight vectors were considered. Previoulsy I thought that the slowness was due to either output operations or not harnessing sparse vectors. Now I can conclude that it is because of not harnessing sparse vectors.
 
-** Step 6. Tokenization and TF calculation of the test set takes 9.675s at CPU usage of 100.00% with user/sys ratio of 0.577.
+** Step 6. Tokenization and TF calculation of the test set takes 7.564s at CPU usage of 100.00% with user/sys ratio of 0.477.
 
-** Step 7. Test set w vectors generation takes 0.964s at CPU usage of 60.16% with user/sys ratio of 7.055.
+** Step 7. Test set w vectors generation takes 0.513s at CPU usage of 99.12% with user/sys ratio of 3.884.
 
-** Step 8. OVA classification of the test set takes 3.410s at CPU usage of 97.94% with user/sys ratio of 103.375.
+** Step 8. OVA classification of the test set takes 1.922s at CPU usage of 98.22% with user/sys ratio of 117.000.
 
-** Step 9. Measuring the performances of the classifiers takes 0.027s at CPU usage of 74.09% with user/sys ratio of 1.500.
+** Step 9. Measuring the performances of the classifiers takes 0.013s at CPU usage of 92.57% with user/sys ratio of infinity.
 
-** Total running time is 50.423s for the training phase (Step 1 to Step 5 in which Step 4 is run without any ES which takes 7.228s). This suggests that:
+** Total running time is 50.423s for the training phase (Step 1 to Step 5 in which Step 4 is run without any ES which takes 39.486s). This suggests that:
 1. Choosing the right representation of data like sparse vector representation really matters.
 2. C output operations does not incur visible performance penalty as long as it is used infrequently.
 3. C input operations are fast.
