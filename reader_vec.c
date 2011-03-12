@@ -17,7 +17,7 @@ MAIN_BEGIN(
 "|                                ...                                |\n"
 "+-------------------------------------------------------------------+\n"
 "in the following human-readable form of the sparse vector:\n"
-"INPUT_FILE_NAME: (STRING( INT_NUMBER FLOATING_POINT_NUMBER)*)?\\n\n"
+"INPUT_FILE_NAME: (STRING( INT_NUMBER: FLOATING_POINT_NUMBER)*)?\\n\n"
 "If -n (i.e., normal) is given, the following human-readable form of the\n"
 "normal vector representation is used instead:\n"
 "INPUT_FILE_NAME: (STRING( FLOATING_POINT_NUMBER)*)?\\n\n"
@@ -115,7 +115,7 @@ MAIN_INPUT_START
 	  fprintf(out_stream, " %f", e.value);
 
 	} else {
-	  fprintf(out_stream, " %u %f", e.offset, e.value);
+	  fprintf(out_stream, " %u: %f", e.offset, e.value);
 	}
       } else {
 	fatal_error("Input file %s has malformed structure: "
