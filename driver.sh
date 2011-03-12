@@ -219,7 +219,7 @@ function tokenization_and_tf_calculation {
     repo_dir=$1/repo
 
     for file in `ls $repo_dir`; do
- 	($tokenizer $repo_dir/$file | $tf -o $1/$file) &
+ 	($tokenizer $repo_dir/$file | grep -v '^[0-9a-z]$' | $tf -o $1/$file) &
     done
 
     wait
