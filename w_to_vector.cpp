@@ -85,6 +85,7 @@ static inline void offset_count_fn(unsigned int count)
 {
 }
 
+static unsigned int M_has_been_taken = 0;
 static unsigned int vector_position = 0;
 static inline void double_fn(unsigned int index, double value)
 {
@@ -92,15 +93,18 @@ static inline void double_fn(unsigned int index, double value)
     return;
   }
 
-  class_idf_entry &data = idf_list[word];
-  data.first = vector_position++;
-  data.second = value;
+  if (M_has_been_taken) {
+    class_idf_entry &data = idf_list[word];
+    data.first = vector_position++;
+    data.second = value;
+  }
 
   word.clear(); 
 }
 
 static inline void end_of_vector_fn(void)
 {
+  M_has_been_taken = 1;
 }
 
 static inline void load_idf_dic_file(const char *filename)
