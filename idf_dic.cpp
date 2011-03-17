@@ -48,9 +48,9 @@ static inline void partial_fn(char *f)
 
 static inline void complete_fn(void)
 {
-  int pos = word.find(' ');
+  unsigned int pos = word.find(' ');
 
-  if (pos != -1) {
+  if (pos != word.npos) {
     word = word.substr(0, pos);
   }
 

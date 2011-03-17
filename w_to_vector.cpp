@@ -53,9 +53,9 @@ static inline void partial_fn(char *f)
 
 static inline void complete_fn(void)
 {
-  int pos = word.find(' ');
+  unsigned int pos = word.find(' ');
 
-  if (pos == -1) {
+  if (pos == word.npos) {
     fatal_error("%s is a malformed input", word.c_str());
   } else {
     w_list.push_back(class_w_entry());
@@ -116,8 +116,6 @@ static inline void load_idf_dic_file(const char *filename)
 	       end_of_vector_fn);
 }
 
-typedef unordered_set<string> class_processed_doc_list;
-class_processed_doc_list processed_doc_list;
 MAIN_BEGIN(
 "w_to_vector",
 "If input file is not given, stdin is read for a list of paths of input files."
@@ -199,21 +197,16 @@ break;
 MAIN_INPUT_START
 MAIN_LIST_OF_FILE_START
 {
-  /* Handle documents in multiple categories */
+  /* Extract document name */
   unsigned int pos = file_path->find_last_of(OS_PATH_DELIMITER);
-  if (pos == file_path->length()) { // Assume no directory in the path
+  if (pos == file_path->npos) {
+    // The path contains no leading directories
     pos = 0;
   } else {
     pos++;
   }
   const string &doc_name = file_path->substr(pos);
-  class_processed_doc_list::iterator exists
-    = processed_doc_list.find(doc_name);
-  if (exists != processed_doc_list.end()) { // Skip already processed doc
-    continue;
-  }
-  processed_doc_list.insert(doc_name);
-  /* End of handling documents in multiple categories */
+  /* Extract document name */
 
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 
