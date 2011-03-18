@@ -69,9 +69,7 @@ typedef vector<class_sparse_vector *> class_docs;
 typedef unordered_map<string, class_docs> class_cat_doc_list;
 
 typedef pair<pair<class_cat_doc_list,
-		  unsigned int /* all cats cardinality
-				* (i.e, |C_1| + ... + |C_k|)
-				*/>,
+		  unsigned int /* unique doc count (i.e., M) */>,
 	     class_cat_profile_list> class_W_construction_material;
 
 typedef class_w_cats * class_w_cats_ptr;
@@ -80,7 +78,7 @@ typedef vector<class_w_cats_ptr> class_unique_docs_for_estimating_Th;
 typedef pair<class_unique_docs_for_estimating_Th,
 	     class_W_construction_material> class_data;
 
-static inline unsigned int &all_cats_cardinality(class_data &data)
+static inline unsigned int &unique_doc_count(class_data &data)
 {
   return data.second.first.second;
 }
@@ -138,7 +136,7 @@ static inline void string_complete_fn(void)
   /* 1. Push an entry D into all_unique_docs.
    * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in LS.
    * 3. Set the gold standard of D based on the DOC_CAT file while
-   *    incrementing variable all_cats_cardinality of LS.
+   *    incrementing variable unique_doc_count of LS.
    * 4. Copy D_ptr to the categories in the gold standard of D.
    */
 
@@ -156,11 +154,12 @@ static inline void string_complete_fn(void)
   w_to_doc_name[&D_ptr->first] = word;
 #endif
 
+  unique_doc_count(LS)++;
+
   class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
   if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
 
     D_ptr->second = NULL;
-    all_cats_cardinality(LS)++;
 
     /* Step 4 */
 #ifdef BE_VERBOSE
@@ -173,7 +172,6 @@ static inline void string_complete_fn(void)
 
     class_set_of_cats &doc_GS = GS_entry->second;
     D_ptr->second = &doc_GS;
-    all_cats_cardinality(LS) += doc_GS.size();
 
     /* Step 4 */
     for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
@@ -333,7 +331,7 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
  * used to construct the corresponding W vector.
  */
 static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
-				const unsigned int all_cats_cardinality,
+				const unsigned int unique_doc_count,
 				double P)
 {
   /* In this implementation, each category C in the category profile has its
@@ -379,7 +377,7 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       class_cat_profile &cat_profile = i->second;
 
       unsigned int &C_cardinality = cat_profile.first.second;
-      unsigned int not_C_cardinality = all_cats_cardinality - C_cardinality;
+      unsigned int not_C_cardinality = unique_doc_count - C_cardinality;
 
       class_sparse_vector &W = cat_profile.second.second;
       const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
@@ -1263,9 +1261,9 @@ for (unsigned int i = 0; i < ES_count; i++)
 	   * be constructed to build the profile vectors
 	   */
 
-	  if (in_excluded_categories) {
+	  unique_doc_count(LS_min_ES)++;
 
-	    all_cats_cardinality(LS_min_ES)++;
+	  if (in_excluded_categories) {
 
 #ifdef BE_VERBOSE
 	    cat_doc_list(LS_min_ES)[""].insert(&j->first);
@@ -1276,7 +1274,6 @@ for (unsigned int i = 0; i < ES_count; i++)
 
 	    const class_set_of_cats &GS = *(j->second);
 
-	    all_cats_cardinality(LS_min_ES) += GS.size();
 	    for (class_set_of_cats::const_iterator k = GS.begin();
 		 k != GS.end();
 		 k++)
@@ -1300,7 +1297,7 @@ for (unsigned int i = 0; i < ES_count; i++)
     for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
       {
 	construct_Ws(cat_profile_list(LS_min_ES),
-		     all_cats_cardinality(LS_min_ES),
+		     unique_doc_count(LS_min_ES),
 		     P);
 
 	for (class_cat_profile_list::iterator j
@@ -1349,7 +1346,7 @@ for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
   }
 /* End of parameter tuning */
 
-construct_Ws(cat_profile_list(LS), all_cats_cardinality(LS),
+construct_Ws(cat_profile_list(LS), unique_doc_count(LS),
 	     ((ES_count == 0) ? tuning_init : -1));
 
 #ifdef BE_VERBOSE
