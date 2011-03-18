@@ -143,9 +143,10 @@ MAIN_BEGIN(
 "IDF_i is a double (8 bytes) datum whose value should be the IDF of word i.\n"
 "Then, this processing unit will calculate the weight vector w of each\n"
 "document: w^d = <w^d_1, ..., w^d_N> where\n"
-"                        TF(i, d) * IDF(i)\n"
+"                        TF'(i, d) * IDF(i)\n"
 "w^d_i = ----------------------------------------------------\n"
-"        sqrt( sum from j=1 to N of [ TF(j, d) * IDF(j) ]^2 )\n"
+"        sqrt( sum from j=1 to N of [ TF'(j, d) * IDF(j) ]^2 )\n"
+"and TF'(i, d) = 1 + ln(TF(i, d))"
 "Finally, the result will have the following binary header whose endianness\n"
 "follows that of the host machine:\n"
 "+--------------------------------------------------------------------+\n"
@@ -219,7 +220,7 @@ MAIN_LIST_OF_FILE_START
       continue;
     } else { // Calculation of a feature's weight
       unsigned int pos = j->second.first;
-      double tf_idf = i->second * j->second.second;
+      double tf_idf = (1 + log(i->second)) * j->second.second;
 
       valid_w_list.push_back(class_idf_entry(pos, tf_idf));
       normalizer += tf_idf * tf_idf;

@@ -73,9 +73,9 @@ MAIN_BEGIN(
 "of duplicates of a word in the input stream can be taken as the number of\n"
 "documents having that particular word.\n"
 "Then, this processing unit calculates the IDF of each word f as follows:\n"
-"                     M\n"
-"IDF(f) = log10 -------------\n"
-"               #doc_having_f\n"
+"                M + 1\n"
+"IDF(f) = ln -------------\n"
+"            #doc_having_f\n"
 "Where M specifies the total number of paths (i.e., one document/path) in\n"
 "the input stream.\n"
 "Finally, the result will be in the following binary format whose endianness\n"
@@ -181,7 +181,7 @@ MAIN_INPUT_END
     }
 
     o.doc_count.value = idf_list[*i];
-    o.e.value = log10(static_cast<double>(M) / o.doc_count.value);
+    o.e.value = log(static_cast<double>(M + 1) / o.doc_count.value);
     block_write = fwrite(&o, sizeof(o), 1, out_stream);
     if (block_write == 0) {
       fatal_syserror("Cannot write IDF to output stream");
