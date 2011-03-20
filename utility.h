@@ -29,8 +29,8 @@
 #define NO_MORE_CASE default:					\
   fatal_error("%c is invalid option (-h for help)", optopt);	\
 
-#define MAIN_BEGIN(name, usage_note, more_opt, more_opt_help,		\
-		   is_multiple_input, cases)				\
+#define MAIN_BEGIN_OPT_OUT(name, usage_note, more_opt, more_opt_help,	\
+			   is_multiple_input, is_no_out, cases)		\
   int main(int argc, char **argv, char **envp) {			\
     int optchar;							\
     prog_name = name;							\
@@ -43,7 +43,11 @@
     /* Parse command line arguments */					\
     opterr = 0;								\
     while (1) {								\
-      optchar = getopt(argc, argv, ":o:h" more_opt);			\
+      if (is_no_out) {							\
+	optchar = getopt(argc, argv, ":h" more_opt);			\
+      } else {								\
+	optchar = getopt(argc, argv, ":o:h" more_opt);			\
+      }									\
       if (optchar == -1) {						\
 	break;								\
       } else if (optchar == ':') {					\
@@ -52,13 +56,11 @@
 	fatal_error("%c is invalid option (-h for help)", optopt);	\
       } else {								\
 	switch (optchar) {						\
-	case 'o':							\
-	  open_out_stream(optarg);					\
-	  break;							\
 	case 'h':							\
 	  fprintf(stderr, "Usage: %s " more_opt_help			\
-		  " [-o OUTPUT_FILE] [INPUT_FILE]%s\n" usage_note,	\
+		  "%s [INPUT_FILE]%s\n" usage_note,			\
 		  prog_name,						\
+		  is_no_out ? "" : " [-o OUTPUT_FILE]",			\
 		  is_multiple_input ? " ..." : "");			\
 	  return EXIT_SUCCESS;						\
 	cases								\
@@ -66,6 +68,15 @@
       }									\
     }									\
     /* End of parsing */
+
+#define MAIN_BEGIN(name, usage_note, more_opt, more_opt_help,	\
+		   is_multiple_input, cases)			\
+  MAIN_BEGIN_OPT_OUT(name, usage_note, more_opt, more_opt_help,	\
+		     is_multiple_input, 0, cases		\
+  case 'o':							\
+		     open_out_stream(optarg);			\
+		     break;					\
+)
 
 #define MAIN_INPUT_START						\
   do {									\
