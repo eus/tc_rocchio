@@ -1,3 +1,4 @@
+* DEBUGGING A PARTICULAR UNIT
 To debug a particular unit, say rocchio.cpp, run driver.sh from the first step up to the step before the step that uses the particular unit. So, in the case of rocchio.cpp, driver.sh should be run from step 0 to step 4.
 
 Afterwards, in driver.sh, edit the function body of the step that runs the unit to be debugged by adding `echo' after `time' but before the executable. In the case of rocchio.cpp, below is the snippet of the edited function body of step 5:
@@ -15,3 +16,28 @@ Now the unit source code can be edited in any way (e.g., putting some `fprintf(s
 3. `DONT_OPTIMIZE=yes' will compile with `-g3' instead of `-O3'.
 
 Finally, execute the unit directly without using driver.sh by pasting the command line that is produced before. The complete command line can also be used to run the unit under GDB and valgrind.
+
+* CHECKING CALCULATION CORRECTNESS
+To debug the correctness of the calculation, the resulting W vector and threshold for each category of Reuters21578-Apte-90Cat as given by the ROI program are stored in directory doc/ROI/binary_classifiers. Each file with .weight extension is the W vector of the category. Each line in the file is a vector element. The feature (word) represented by each vector element can be found in the same line in file doc/ROI/DIC_nf.txt.
+
+The file doc/ROI/DIC_nf.txt has two columns. The first column is a list of features (words) while the second column is the list of the number of unique documents in the training set having the corresponding features.
+
+The file doc/ROI/binary_classifications_of_the_training_set.txt gives the dot product between each document vector w and the profile vectors stored in doc/ROI/binary_classifiers.
+
+The file doc/ROI/gold_standard.txt gives the label of each document.
+
+The file doc/ROI/perf_measure_on_the_training_set.txt gives the performance measure of the classification process.
+
+Finally, the directory doc/ROI/TF stores the term frequencies of all documents in the training set. Each file has three columns. The first column is the document name, the second column is the feature, and the third column is the term frequency of the corresponding feature in the corresponding document.
+
+The ROI data can be used for testing by running driver.sh on Reuters21578-Apte-90Cat (http://disi.unitn.it/moschitti/corpora/Reuters21578-Apte-90Cat.tar.gz). The number of unique documents is 9,598 documents. Total number of unique features is 29,633 according to ROI dictionary in which ROI automatically filters out all single alphanumeric character (i.e., [a-z0-9]). The driver.sh must be run without using any ES (i.e., use -E 0) and set P to 1 (i.e., use -I 1) as illustrated below:
+./driver.sh -x EXEC_DIR -r RESULT_DIR -t REUTERS-90_TRAINING_DIR -E 0 -B 1 -I 5 -M 2 -s REUTERS-90_TESTING_DIR
+The steps that matter are steps that do not run on the test set.
+
+After driver.sh has been run, there are several test programs stored in directory test/:
+1. check_binary_classifiers is to see whether the files in doc/ROI/binary_classifiers can be reproduced from the file doc/ROI/DIC_nf and the files in directory doc/ROI/TF using my implementation of PRC, specifically the rocchio processing unit. An invocation example is the following one:
+./check_binary_classifiers -D /tmp/source/doc/ROI/binary_classifiers/ -R /tmp/result/idf_dic.bin -T 1e-6 -o discrepancies.txt /tmp/result/W_vectors.bin
+
+2. check_classifications is to see whether the file doc/ROI/binary_classifications_of_the_training_set.txt can be reproduced from the file doc/ROI/binary_classifications_of_the_training_set.txt and the files in doc/ROI/TF using my implementation of PRC, specifically the classifier processing unit.
+
+3. check_perf_measure is to see whether the file doc/ROI/perf_measure_on_the_training_set.txt can be reproduced from the files doc/ROI/binary_classifications_of_the_training_set.txt and doc/ROI/gold_standard.txt and the threshold files in directory doc/ROI/binary_classifiers.

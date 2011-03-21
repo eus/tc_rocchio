@@ -37,10 +37,6 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-typedef pair<unsigned int, double> class_idf_entry;
-typedef unordered_map<string, class_idf_entry> class_idf_list;
-static class_idf_list idf_list;
-
 typedef pair<string, double> class_w_entry;
 typedef list<class_w_entry> class_w_list;
 static class_w_list w_list;
@@ -67,54 +63,8 @@ static inline void complete_fn(void)
 
   word.clear();
 }
-      
-static inline void vector_size_fn(unsigned int size)
-{
-}
 
-static inline void string_partial_fn(char *str)
-{
-  word.append(str);
-}
-
-static inline void string_complete_fn(void)
-{
-}
-
-static inline void offset_count_fn(unsigned int count)
-{
-}
-
-static unsigned int M_has_been_taken = 0;
-static unsigned int vector_position = 0;
-static inline void double_fn(unsigned int index, double value)
-{
-  if (index != 0) {
-    return;
-  }
-
-  if (M_has_been_taken) {
-    class_idf_entry &data = idf_list[word];
-    data.first = vector_position++;
-    data.second = value;
-  }
-
-  word.clear(); 
-}
-
-static inline void end_of_vector_fn(void)
-{
-  M_has_been_taken = 1;
-}
-
-static inline void load_idf_dic_file(const char *filename)
-{
-  open_in_stream(filename);
-
-  parse_vector(buffer, BUFFER_SIZE, vector_size_fn, string_partial_fn,
-	       string_complete_fn, offset_count_fn, double_fn,
-	       end_of_vector_fn);
-}
+#include "utility_idf_dic.hpp"
 
 MAIN_BEGIN(
 "w_to_vector",

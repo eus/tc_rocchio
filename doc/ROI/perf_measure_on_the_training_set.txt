@@ -1,0 +1,219 @@
+
+					PROGRAM OPTION
+
+		Phrases are added
+		Words are trasformed in lower case
+		Document ID must be integer
+
+
+
+
+
+Best gamma Evaluation - current Gamma 1.000000 
+
+
+Break-even point computation !!! 
+File CKB/oracle opened
+
+Expected number of words: 29633
+
+Words loaded: 29633 
+
+
+Classify all the CKB/testdoc/testItems.le file which contains all the test documents
+
+././CKB/StdScarti_test.txt ././CKB/StdScarti_test.number.le written
+done!
+
+0):           acq	correct: 1298	 wrong: 350	 not retrieved: 352
+1):          alum	correct: 33	 wrong: 2	 not retrieved: 2
+2):        barley	correct: 29	 wrong: 8	 not retrieved: 8
+3):           bop	correct: 54	 wrong: 21	 not retrieved: 21
+4):       carcass	correct: 44	 wrong: 6	 not retrieved: 6
+5):    castor-oil	correct: 1	 wrong: 0	 not retrieved: 0
+6):         cocoa	correct: 47	 wrong: 8	 not retrieved: 8
+7):       coconut	correct: 4	 wrong: 0	 not retrieved: 0
+8):   coconut-oil	correct: 4	 wrong: 0	 not retrieved: 0
+9):        coffee	correct: 101	 wrong: 10	 not retrieved: 10
+10):        copper	correct: 44	 wrong: 3	 not retrieved: 3
+11):    copra-cake	correct: 2	 wrong: 0	 not retrieved: 0
+12):          corn	correct: 143	 wrong: 38	 not retrieved: 38
+13):        cotton	correct: 35	 wrong: 4	 not retrieved: 4
+14):    cotton-oil	correct: 1	 wrong: 0	 not retrieved: 0
+15):           cpi	correct: 48	 wrong: 21	 not retrieved: 21
+16):           cpu	correct: 3	 wrong: 0	 not retrieved: 0
+17):         crude	correct: 328	 wrong: 61	 not retrieved: 61
+18):           dfl	correct: 2	 wrong: 0	 not retrieved: 0
+19):           dlr	correct: 90	 wrong: 41	 not retrieved: 41
+20):           dmk	correct: 9	 wrong: 1	 not retrieved: 1
+21):          earn	correct: 2681	 wrong: 196	 not retrieved: 196
+22):          fuel	correct: 7	 wrong: 6	 not retrieved: 6
+23):           gas	correct: 26	 wrong: 11	 not retrieved: 11
+24):           gnp	correct: 90	 wrong: 11	 not retrieved: 11
+25):          gold	correct: 83	 wrong: 11	 not retrieved: 11
+26):         grain	correct: 361	 wrong: 72	 not retrieved: 72
+27):     groundnut	correct: 5	 wrong: 0	 not retrieved: 0
+28): groundnut-oil	correct: 1	 wrong: 0	 not retrieved: 0
+29):          heat	correct: 12	 wrong: 2	 not retrieved: 2
+30):           hog	correct: 12	 wrong: 4	 not retrieved: 4
+31):       housing	correct: 15	 wrong: 1	 not retrieved: 1
+32):        income	correct: 7	 wrong: 2	 not retrieved: 2
+33):   instal-debt	correct: 5	 wrong: 0	 not retrieved: 0
+34):      interest	correct: 229	 wrong: 118	 not retrieved: 118
+35):           ipi	correct: 31	 wrong: 10	 not retrieved: 10
+36):    iron-steel	correct: 35	 wrong: 5	 not retrieved: 5
+37):           jet	correct: 4	 wrong: 0	 not retrieved: 0
+38):          jobs	correct: 40	 wrong: 6	 not retrieved: 6
+39):      l-cattle	correct: 6	 wrong: 0	 not retrieved: 0
+40):          lead	correct: 13	 wrong: 2	 not retrieved: 2
+41):           lei	correct: 12	 wrong: 0	 not retrieved: 0
+42):       lin-oil	correct: 1	 wrong: 0	 not retrieved: 0
+43):     livestock	correct: 61	 wrong: 14	 not retrieved: 14
+44):        lumber	correct: 10	 wrong: 0	 not retrieved: 0
+45):     meal-feed	correct: 25	 wrong: 5	 not retrieved: 5
+46):      money-fx	correct: 401	 wrong: 138	 not retrieved: 137
+47):  money-supply	correct: 70	 wrong: 68	 not retrieved: 68
+48):       naphtha	correct: 2	 wrong: 0	 not retrieved: 0
+49):       nat-gas	correct: 57	 wrong: 18	 not retrieved: 18
+50):        nickel	correct: 8	 wrong: 0	 not retrieved: 0
+51):           nkr	correct: 1	 wrong: 0	 not retrieved: 0
+52):         nzdlr	correct: 2	 wrong: 0	 not retrieved: 0
+53):           oat	correct: 8	 wrong: 0	 not retrieved: 0
+54):       oilseed	correct: 84	 wrong: 40	 not retrieved: 40
+55):        orange	correct: 16	 wrong: 0	 not retrieved: 0
+56):     palladium	correct: 2	 wrong: 0	 not retrieved: 0
+57):    palmkernel	correct: 2	 wrong: 0	 not retrieved: 0
+58):      palm-oil	correct: 26	 wrong: 4	 not retrieved: 4
+59):      pet-chem	correct: 17	 wrong: 3	 not retrieved: 3
+60):      platinum	correct: 5	 wrong: 0	 not retrieved: 0
+61):        potato	correct: 3	 wrong: 0	 not retrieved: 0
+62):       propane	correct: 3	 wrong: 0	 not retrieved: 0
+63):          rand	correct: 2	 wrong: 0	 not retrieved: 0
+64):      rape-oil	correct: 4	 wrong: 1	 not retrieved: 1
+65):      rapeseed	correct: 14	 wrong: 4	 not retrieved: 4
+66):      reserves	correct: 47	 wrong: 8	 not retrieved: 8
+67):        retail	correct: 17	 wrong: 6	 not retrieved: 6
+68):          rice	correct: 33	 wrong: 2	 not retrieved: 2
+69):        rubber	correct: 33	 wrong: 4	 not retrieved: 4
+70):           rye	correct: 1	 wrong: 0	 not retrieved: 0
+71):          ship	correct: 173	 wrong: 23	 not retrieved: 23
+72):        silver	correct: 17	 wrong: 4	 not retrieved: 4
+73):       sorghum	correct: 22	 wrong: 2	 not retrieved: 2
+74):       soybean	correct: 62	 wrong: 16	 not retrieved: 16
+75):      soy-meal	correct: 13	 wrong: 0	 not retrieved: 0
+76):       soy-oil	correct: 14	 wrong: 0	 not retrieved: 0
+77): strategic-metal	correct: 16	 wrong: 0	 not retrieved: 0
+78):         sugar	correct: 109	 wrong: 17	 not retrieved: 17
+79):      sun-meal	correct: 1	 wrong: 0	 not retrieved: 0
+80):       sun-oil	correct: 5	 wrong: 0	 not retrieved: 0
+81):       sunseed	correct: 10	 wrong: 1	 not retrieved: 1
+82):           tea	correct: 8	 wrong: 1	 not retrieved: 1
+83):           tin	correct: 18	 wrong: 0	 not retrieved: 0
+84):         trade	correct: 291	 wrong: 78	 not retrieved: 78
+85):       unknown	correct: 0	 wrong: 0	 not retrieved: 0
+86):       veg-oil	correct: 74	 wrong: 13	 not retrieved: 13
+87):         wheat	correct: 177	 wrong: 35	 not retrieved: 35
+88):           wpi	correct: 16	 wrong: 3	 not retrieved: 3
+89):           yen	correct: 25	 wrong: 20	 not retrieved: 20
+90):          zinc	correct: 19	 wrong: 2	 not retrieved: 2
+
+                   	         8020		1561			1562
+
+0):           acq	Rec 0.786667	Prec. 0.787621	 f1: 0.787144
+1):          alum	Rec 0.942857	Prec. 0.942857	 f1: 0.942857
+2):        barley	Rec 0.783784	Prec. 0.783784	 f1: 0.783784
+3):           bop	Rec 0.720000	Prec. 0.720000	 f1: 0.720000
+4):       carcass	Rec 0.880000	Prec. 0.880000	 f1: 0.880000
+5):    castor-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+6):         cocoa	Rec 0.854545	Prec. 0.854545	 f1: 0.854545
+7):       coconut	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+8):   coconut-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+9):        coffee	Rec 0.909910	Prec. 0.909910	 f1: 0.909910
+10):        copper	Rec 0.936170	Prec. 0.936170	 f1: 0.936170
+11):    copra-cake	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+12):          corn	Rec 0.790055	Prec. 0.790055	 f1: 0.790055
+13):        cotton	Rec 0.897436	Prec. 0.897436	 f1: 0.897436
+14):    cotton-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+15):           cpi	Rec 0.695652	Prec. 0.695652	 f1: 0.695652
+16):           cpu	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+17):         crude	Rec 0.843188	Prec. 0.843188	 f1: 0.843188
+18):           dfl	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+19):           dlr	Rec 0.687023	Prec. 0.687023	 f1: 0.687023
+20):           dmk	Rec 0.900000	Prec. 0.900000	 f1: 0.900000
+21):          earn	Rec 0.931874	Prec. 0.931874	 f1: 0.931874
+22):          fuel	Rec 0.538462	Prec. 0.538462	 f1: 0.538462
+23):           gas	Rec 0.702703	Prec. 0.702703	 f1: 0.702703
+24):           gnp	Rec 0.891089	Prec. 0.891089	 f1: 0.891089
+25):          gold	Rec 0.882979	Prec. 0.882979	 f1: 0.882979
+26):         grain	Rec 0.833718	Prec. 0.833718	 f1: 0.833718
+27):     groundnut	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+28): groundnut-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+29):          heat	Rec 0.857143	Prec. 0.857143	 f1: 0.857143
+30):           hog	Rec 0.750000	Prec. 0.750000	 f1: 0.750000
+31):       housing	Rec 0.937500	Prec. 0.937500	 f1: 0.937500
+32):        income	Rec 0.777778	Prec. 0.777778	 f1: 0.777778
+33):   instal-debt	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+34):      interest	Rec 0.659942	Prec. 0.659942	 f1: 0.659942
+35):           ipi	Rec 0.756098	Prec. 0.756098	 f1: 0.756098
+36):    iron-steel	Rec 0.875000	Prec. 0.875000	 f1: 0.875000
+37):           jet	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+38):          jobs	Rec 0.869565	Prec. 0.869565	 f1: 0.869565
+39):      l-cattle	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+40):          lead	Rec 0.866667	Prec. 0.866667	 f1: 0.866667
+41):           lei	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+42):       lin-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+43):     livestock	Rec 0.813333	Prec. 0.813333	 f1: 0.813333
+44):        lumber	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+45):     meal-feed	Rec 0.833333	Prec. 0.833333	 f1: 0.833333
+46):      money-fx	Rec 0.745353	Prec. 0.743970	 f1: 0.744661
+47):  money-supply	Rec 0.507246	Prec. 0.507246	 f1: 0.507246
+48):       naphtha	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+49):       nat-gas	Rec 0.760000	Prec. 0.760000	 f1: 0.760000
+50):        nickel	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+51):           nkr	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+52):         nzdlr	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+53):           oat	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+54):       oilseed	Rec 0.677419	Prec. 0.677419	 f1: 0.677419
+55):        orange	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+56):     palladium	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+57):    palmkernel	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+58):      palm-oil	Rec 0.866667	Prec. 0.866667	 f1: 0.866667
+59):      pet-chem	Rec 0.850000	Prec. 0.850000	 f1: 0.850000
+60):      platinum	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+61):        potato	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+62):       propane	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+63):          rand	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+64):      rape-oil	Rec 0.800000	Prec. 0.800000	 f1: 0.800000
+65):      rapeseed	Rec 0.777778	Prec. 0.777778	 f1: 0.777778
+66):      reserves	Rec 0.854545	Prec. 0.854545	 f1: 0.854545
+67):        retail	Rec 0.739130	Prec. 0.739130	 f1: 0.739130
+68):          rice	Rec 0.942857	Prec. 0.942857	 f1: 0.942857
+69):        rubber	Rec 0.891892	Prec. 0.891892	 f1: 0.891892
+70):           rye	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+71):          ship	Rec 0.882653	Prec. 0.882653	 f1: 0.882653
+72):        silver	Rec 0.809524	Prec. 0.809524	 f1: 0.809524
+73):       sorghum	Rec 0.916667	Prec. 0.916667	 f1: 0.916667
+74):       soybean	Rec 0.794872	Prec. 0.794872	 f1: 0.794872
+75):      soy-meal	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+76):       soy-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+77): strategic-metal	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+78):         sugar	Rec 0.865079	Prec. 0.865079	 f1: 0.865079
+79):      sun-meal	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+80):       sun-oil	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+81):       sunseed	Rec 0.909091	Prec. 0.909091	 f1: 0.909091
+82):           tea	Rec 0.888889	Prec. 0.888889	 f1: 0.888889
+83):           tin	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+84):         trade	Rec 0.788618	Prec. 0.788618	 f1: 0.788618
+85):       unknown	Rec 1.000000	Prec. 1.000000	 f1: 1.000000
+86):       veg-oil	Rec 0.850575	Prec. 0.850575	 f1: 0.850575
+87):         wheat	Rec 0.834906	Prec. 0.834906	 f1: 0.834906
+88):           wpi	Rec 0.842105	Prec. 0.842105	 f1: 0.842105
+89):           yen	Rec 0.555556	Prec. 0.555556	 f1: 0.555556
+90):          zinc	Rec 0.904762	Prec. 0.904762	 f1: 0.904762
+
+
+           MacroAverage:	Recall: 0.886381	Precision: 0.886376
+           MicroAverage:	Recall: 0.836986	Precision: 0.837073	f1: 0.837030
+
+
+Threshold[]={0.007889,0.058594,0.103516,0.092773,0.042969,0.500000,0.073242,0.250000,0.315430,0.045166,0.056641,0.500000,0.041016,0.056641,0.500000,0.102051,0.250000,0.022919,0.500000,0.072266,0.125000,0.008743,0.156250,0.068359,0.063232,0.054688,0.022797,0.125000,0.500000,0.119141,0.091797,0.125000,0.205078,0.250000,0.042847,0.106934,0.054688,0.250000,0.076660,0.187500,0.110840,0.187500,0.500000,0.032227,0.093750,0.057129,0.031448,0.083984,0.500000,0.052490,0.125000,0.500000,0.500000,0.156250,0.033447,0.062500,0.500000,0.468750,0.093750,0.054688,0.187500,0.250000,0.250000,0.585938,0.343750,0.111328,0.081543,0.110352,0.062500,0.057632,0.500000,0.016266,0.102051,0.085938,0.051147,0.093750,0.091797,0.046875,0.045410,0.500000,0.187500,0.134766,0.140625,0.093750,0.035217,0.500000,0.036621,0.039795,0.210938,0.117188,0.088379};

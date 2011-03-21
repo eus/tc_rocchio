@@ -31,7 +31,7 @@ reader_vec:
 
 tf.o: utility.h
 idf_dic.o: utility.h utility.hpp
-w_to_vector.o: utility.h utility.hpp utility_vector.hpp
+w_to_vector.o: utility.h utility.hpp utility_vector.hpp utility_idf_dic.hpp
 rocchio.o: utility.h utility_vector.hpp utility.hpp utility_doc_cat_list.hpp \
 	utility_classifier.hpp
 classifier.o: utility.h utility_vector.hpp utility.hpp utility_classifier.hpp
