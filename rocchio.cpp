@@ -969,6 +969,70 @@ static inline void test_estimate_Th(void)
 }
 #endif /* NDEBUG of test_test_estimate_Th() */
 
+
+typedef vector<double /* BEP */> class_BEP_history_entry;
+typedef unordered_map<string /* cat name */,
+		      class_BEP_history_entry>class_BEP_history;
+typedef unordered_set<string> class_BEP_history_filter;
+static inline void output_BEP_history(const class_BEP_history &history,
+				      const class_BEP_history_filter &filter,
+				      int inverted_filter,
+				      double p_init, double p_inc, double p_max)
+{
+  char markers[] = {'+', '*', 'o', 'x', '^'};
+  unsigned int marker_idx = 0;
+  char colors[] = {'k', 'r', 'g', 'b', 'm', 'c'};
+  unsigned int color_idx = 0;
+  unsigned int vec_size = 0;
+
+  for (class_BEP_history::const_iterator i = history.begin();
+       i != history.end();
+       i++)
+    {
+      if (i == history.begin()) { // Only once
+	fprintf(out_stream, "P = [%f:%f:%f];\n", p_init, p_inc, p_max);
+	vec_size = i->second.size();
+
+	/* Activate hold on */
+	fprintf(out_stream,
+		"plot(P(1), 0)\n"
+		"hold on\n");
+	/* Hold on activated */
+      }
+
+      if ((!filter.empty()
+	   && (((filter.find(i->first) == filter.end()) && !inverted_filter)
+	       || ((filter.find(i->first) != filter.end()) && inverted_filter)))
+	  || (filter.empty() && inverted_filter))
+	{
+	  continue;
+	}
+
+      /* Construct the BEP vector */
+      fprintf(out_stream, "BEP = [");
+      for (unsigned int j = 0; j < vec_size; j++) {
+	fprintf(out_stream, "%f ", i->second[j]);
+      }
+      fprintf(out_stream, "]; ");
+      /* End of BEP vector construction */
+
+      /* Plotting */
+      fprintf(out_stream,
+	      "plot(P, BEP, '-%c%c;%s;', 'markerfacecolor', 'none'"
+	      ", 'markersize', 5)\n", markers[marker_idx++],
+	      colors[color_idx++], i->first.c_str());
+
+      marker_idx %= sizeof(markers) / sizeof(markers[0]);
+      color_idx %= sizeof(colors) / sizeof(colors[0]);
+      /* End of plotting */
+    }
+
+  fprintf(out_stream,
+	  "hold off\n"
+	  "xlabel('P')\n"
+	  "ylabel('BEP')\n");
+}
+
 static unsigned int ES_percentage_set = 0;
 static unsigned int ES_percentage;
 static const unsigned int PERCENTAGE_MULTIPLIER = 1000000;
@@ -979,6 +1043,9 @@ static unsigned int ES_rseed;
 static double tuning_init = -1;
 static double tuning_inc = -1;
 static double tuning_max = -1;
+static char *BEP_history_file = NULL;
+static class_BEP_history_filter BEP_history_filter;
+static int BEP_history_filter_inverted = 0;
 
 MAIN_BEGIN(
 "rocchio",
@@ -1087,11 +1154,19 @@ MAIN_BEGIN(
 "Additionally, the value of BEP_i associated with Th_i is encoded as the\n"
 "third entry with N+2 as its offset.\n"
 "The result is output to the given file if an output file is specified.\n"
-"Otherwise, stdout is used to output binary data.\n",
-"D:B:I:M:E:P:S:",
+"Otherwise, stdout is used to output binary data.\n"
+"If so desired, the prefix name of a GNU Octave script, which is MATLAB\n"
+"compatible, can be specified using -H option.\n"
+"The script will plot the BEPs of categories listed by -F, during\n"
+"parameter tuning. To negate the list, prefix the list with a caret (^).\n"
+"For example, to plot only categories acq and earn, use -F acq,earn.\n"
+"To plot all categories but acq and earn, use -F ^acq,earn.\n"
+"For each ES, there will be one script having the following name:\n"
+"BEP_HISTORY_FILE.ES_NO.m.\n",
+"D:B:I:M:E:P:S:H:F:",
 "-D DOC_CAT_FILE -B INIT_VALUE_OF_P -I INCREMENT_OF_P -M MAX_OF_P\n"
 " -E ESTIMATION_SETS_COUNT -P ES_PERCENTAGE_OF_DOC_IN_[0.000...100.000]\n"
-" -S RANDOM_SEED",
+" -S RANDOM_SEED [-H BEP_HISTORY_FILE [-F LIST_OF_CAT_NAMES_TO_PLOT]]\n",
 0,
 case 'D':
 /* Allocating tokenizing buffer */
@@ -1161,6 +1236,27 @@ case 'S': {
 }
 break;
 
+case 'H': {
+  BEP_history_file = optarg;
+}
+break;
+
+case 'F': {
+  char *ptr = optarg;
+
+  if (ptr[0] == '^') {
+    BEP_history_filter_inverted = 1;
+    ptr++;
+  }
+
+  ptr = strtok(ptr, ",");
+  while (ptr != NULL) {
+    BEP_history_filter.insert(string(ptr));
+    ptr = strtok(NULL, ",");
+  }
+}
+break;
+
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
@@ -1206,6 +1302,8 @@ construct_cat_profile_list(cat_profile_list(LS), cat_doc_list(LS));
 prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
 
 /* Parameter tuning */
+const char *classifier_output_filename = out_stream_name;
+class_BEP_history BEP_history;
 typedef unordered_map<string /* cat name */, double> class_P_avg_list;
 class_P_avg_list P_avg_list;
 for (unsigned int i = 0; i < ES_count; i++)
@@ -1313,9 +1411,13 @@ for (unsigned int i = 0; i < ES_count; i++)
 	    class_classifier &cat_classifier = j->second.second;
 	    class_W_property &prop = cat_classifier.first;
 
-	    prop.update_BEP_max(estimate_Th(unique_docs(ES), cat_doc_list(ES),
-					    cat_name, cat_classifier),
-				P);	   
+	    double BEP = estimate_Th(unique_docs(ES), cat_doc_list(ES),
+				     cat_name, cat_classifier);
+	    prop.update_BEP_max(BEP, P);
+
+	    if (BEP_history_file != NULL) {
+	      BEP_history[cat_name].push_back(BEP);
+	    }
 	  }
       }
 
@@ -1332,6 +1434,22 @@ for (unsigned int i = 0; i < ES_count; i++)
 
 	P_avg_list[j->first] += prop.P_max;
       }
+
+    if (BEP_history_file != NULL) {
+      char int2str[32];
+      snprintf(int2str, sizeof(int2str), "%u", i);
+      string filename(BEP_history_file);
+      filename.append(".").append(int2str).append(".m");
+      open_out_stream(filename.c_str());
+
+      output_BEP_history(BEP_history, BEP_history_filter,
+			 BEP_history_filter_inverted, tuning_init, tuning_inc,
+			 tuning_max);
+      fprintf(out_stream, "print('-landscape', '-dsvg', '%s.svg');\n",
+	      filename.c_str());
+
+      BEP_history.clear();
+    }
   }
 for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
      i != cat_profile_list(LS).end();
@@ -1366,6 +1484,7 @@ for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
 			   i->first, i->second.second);
   }
 
+open_out_stream(classifier_output_filename);
 output_classifiers(cat_profile_list(LS));
 
 MAIN_END

@@ -39,9 +39,11 @@ ES_count=20
 ES_percentage=30
 ES_rseed=1
 excluded_cat=unknown
+BEP_history_script=
+BEP_history_filter=
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S: option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -57,6 +59,8 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S: option; do
 	E) ES_count=$OPTARG;;
 	P) ES_percentage=$OPTARG;;
 	S) ES_rseed=$OPTARG;;
+	H) BEP_history_script=$OPTARG;;
+	F) BEP_history_filter=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -72,6 +76,8 @@ Usage: $prog_name
        -X [EXCLUDED_CATEGORY=unknown]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
+       -H [BEP_HISTORY_FILE]
+       -F [BEP_HISTORY_FILTER]
 
 Do not use any path name having shell special characters or whitespaces.
 The name of excluded category must not contain any shell special character or
@@ -294,10 +300,24 @@ function step_4 {
 
 function step_5 {
     echo -n "5. [TRAINING] PRCs generation..."
-    time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
-	-E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
-	$file_w_vectors_training) \
-	|| exit 1
+    time (if [ -z "$BEP_history_script" ]; then
+	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
+	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
+	    $file_w_vectors_training
+	else
+	    if [ -z "$BEP_history_filter" ]; then
+		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		    -o $file_W_vectors -H $BEP_history_script \
+		    $file_w_vectors_training
+	    else
+		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		    -o $file_W_vectors -H $BEP_history_script \
+		    -F $BEP_history_filter $file_w_vectors_training
+	    fi
+	fi) \
+	    || exit 1
 }
 
 function step_6 {
