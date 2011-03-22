@@ -801,8 +801,11 @@ If no bit exists like in Example 4, the threshold is 0.
   /* End of bits construction */
 
 #ifdef BE_VERBOSE
-  fprintf(stderr, "Threshold estimation on %s (c = %u = |C|)\n",
-	  target_cat_name.c_str(), cat_doc_count);
+  fprintf(stderr,
+	  "The number of bits (i.e., unique dot product values) is %u\n"
+	  "Threshold estimation on %s (c = %u = |C|, |~C| = %u)\n",
+	  d_list.size(), target_cat_name.c_str(), cat_doc_count,
+	  unique_docs.size() - cat_doc_count);
 #endif
   
   double interpolated_BEP
