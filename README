@@ -47,7 +47,7 @@ bin/TCF GCE -DF0
 takes 0.250s at CPU usage of 97.57% with user/sys ratio of 29.500
 
 ** Step 5. Generating binary classifiers using P=1 without using any ES (estimation set) and doing classifications
-bin/TCF DIC -GA0
+bin/TCF DIC -GA1
 takes 5.375s at CPU usage of 91.32% with user/sys ratio of 19.450
 
 ** Step 6. Put all training docs into classes/
