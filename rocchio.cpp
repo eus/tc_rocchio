@@ -56,13 +56,29 @@ typedef pair<class_unique_docs_in_C,
 typedef pair<class_classifier, class_W_material> class_classifier_material;
 typedef unordered_map<string /* cat name */,
 		      class_classifier_material> class_classifier_list;
+#ifdef DONT_FOLLOW_ROI
 typedef pair<class_unique_docs_for_estimating_Th,
 	     class_classifier_list> class_data;
+#else
+typedef pair<pair<class_unique_docs_for_estimating_Th,
+		  class_docs /* cache of docs in excluded categories */>,
+	     class_classifier_list> class_data;
+#endif
 static inline class_unique_docs_for_estimating_Th &unique_docs_all(class_data
 								   &data)
 {
+#ifdef DONT_FOLLOW_ROI
   return data.first;
+#else
+  return data.first.first;
+#endif
 }
+#ifndef DONT_FOLLOW_ROI
+static inline class_docs &excluded_cats_docs(class_data &data)
+{
+  return data.first.second;
+}
+#endif
 static inline unsigned int unique_doc_count(class_data &data)
 {
   return unique_docs_all(data).size();
@@ -167,7 +183,11 @@ static inline void string_complete_fn(void)
 
     D_ptr->second = NULL;
 
+#ifdef DONT_FOLLOW_ROI
     // No need to build the classifier of excluded categories.
+#else
+    class_docs_insert(&D_ptr->first, excluded_cats_docs(LS));
+#endif
 
   } else {
 
@@ -275,6 +295,7 @@ static inline void output_classifiers(class_classifier_list &classifier_list)
  * class_unique_docs_in_C. This function then takes care of initializing
  * class_unique_docs_not_in_C of each category C.
  */
+#ifdef DONT_FOLLOW_ROI
 static inline void construct_unique_docs_not_in_C(class_data &data)
 {
   for (class_unique_docs_for_estimating_Th::const_iterator d
@@ -301,6 +322,9 @@ static inline void construct_unique_docs_not_in_C(class_data &data)
 	}
     }
 }
+#else
+#define construct_unique_docs_not_in_C(data)
+#endif /* DONT_FOLLOW_ROI */
 
 /* For each classifier C in the classifier list, initialize its
  * sum of w vectors for use in the W vector construction.
@@ -369,9 +393,16 @@ static inline void subtract_w_from_W(const class_sparse_vector &w,
 /* If P is set to -1, the value of P_avg stored in each cat profile will be
  * used to construct the corresponding W vector.
  */
+#ifdef DONT_FOLLOW_ROI
 static inline void construct_Ws(class_classifier_list &classifier_list,
 				const unsigned int unique_doc_count,
 				double P)
+#else
+static inline void construct_Ws(class_classifier_list &classifier_list,
+				const unsigned int unique_doc_count,
+				double P,
+				const class_docs &docs_in_excluded_cats)
+#endif
 {
   /* In this implementation, each category C in the classifier list has its
    * sum of w vectors, which have the category C in their gold standards.
@@ -413,12 +444,16 @@ static inline void construct_Ws(class_classifier_list &classifier_list,
       class_classifier_material &C_material = C->second;
 
       unsigned int C_cardinality = unique_docs_in_C(C_material).size();
+#ifdef DONT_FOLLOW_ROI
       unsigned int not_C_cardinality = unique_docs_not_in_C(C_material).size();
 
       if (C_cardinality + not_C_cardinality != unique_doc_count) {
 	fatal_error("Logic error in construct_Ws: (|C|=%u) + (|~C|=%u) != %u",
 		    C_cardinality, not_C_cardinality, unique_doc_count);
       }
+#else
+      unsigned int not_C_cardinality = unique_doc_count - C_cardinality;
+#endif
 
       class_sparse_vector &W = W_vector(C_material);
       const class_sparse_vector &sum_w_in_C = get_sum_w_in_C(C_material);
@@ -443,6 +478,7 @@ static inline void construct_Ws(class_classifier_list &classifier_list,
 	{
 	  double multiplier = P / static_cast<double>(not_C_cardinality);
 
+#ifdef DONT_FOLLOW_ROI
 	  for (class_docs::iterator d_not_in_C
 		 = unique_docs_not_in_C(C_material).begin();
 	       d_not_in_C != unique_docs_not_in_C(C_material).end();
@@ -452,6 +488,29 @@ static inline void construct_Ws(class_classifier_list &classifier_list,
 	      subtract_w_from_W(**d_not_in_C, W, multiplier);
 
 	    } /* End of walking through all w vectors not in C */
+#else
+	  for (class_classifier_list::iterator other_C = classifier_list.begin();
+	       other_C != classifier_list.end();
+	       other_C++)
+	    {
+	      if (C == other_C) {
+		continue;
+	      }
+
+	      subtract_w_from_W(get_sum_w_in_C(other_C->second), W, multiplier);
+
+	    }
+
+	  for (class_docs::const_iterator excluded_d
+		 = docs_in_excluded_cats.begin();
+	       excluded_d != docs_in_excluded_cats.end();
+	       excluded_d++)
+	    {
+	      subtract_w_from_W(**excluded_d, W, multiplier);
+
+	    } /* End of walking through all w vectors not in C */
+
+#endif /* DONT_FOLLOW_ROI */
 
 	} /* End of the second term, the penalizing part */
     }
@@ -846,6 +905,11 @@ for (unsigned int i = 0; i < ES_count; i++)
 				  unique_docs_in_C(classifiers(LS_min_ES)[*k]));
 	      }
 	  }
+#ifndef DONT_FOLLOW_ROI
+	  else {
+	    class_docs_insert(&d->first, excluded_cats_docs(LS_min_ES));
+	  }
+#endif
 	}
       }
     /* End of constructions */
@@ -857,7 +921,12 @@ for (unsigned int i = 0; i < ES_count; i++)
 
     for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
       {
+#ifdef DONT_FOLLOW_ROI
 	construct_Ws(classifiers(LS_min_ES), unique_doc_count(LS_min_ES), P);
+#else
+	construct_Ws(classifiers(LS_min_ES), unique_doc_count(LS_min_ES), P,
+		     excluded_cats_docs(LS_min_ES));
+#endif
 
 	for (class_classifier_list::iterator C = classifiers(LS_min_ES).begin();
 	     C != classifiers(LS_min_ES).end();
@@ -913,8 +982,13 @@ for (class_classifier_list::iterator C = classifiers(LS).begin();
   }
 /* End of parameter tuning */
 
+#ifdef DONT_FOLLOW_ROI
 construct_Ws(classifiers(LS), unique_doc_count(LS),
 	     ((ES_count == 0) ? tuning_init : -1));
+#else
+construct_Ws(classifiers(LS), unique_doc_count(LS),
+	     ((ES_count == 0) ? tuning_init : -1), excluded_cats_docs(LS));
+#endif
 
 #ifdef BE_VERBOSE
 fprintf(stderr, "*LS:\n");
