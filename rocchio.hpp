@@ -36,9 +36,16 @@ typedef vector<class_w_cats_ptr> class_unique_docs_for_estimating_Th;
 typedef unordered_map<class_sparse_vector *, string> class_w_to_doc_name;
 static class_w_to_doc_name w_to_doc_name;
 typedef unordered_set<class_sparse_vector *> class_docs;
+static inline void class_docs_insert(class_sparse_vector *w, class_docs &docs)
+{
+  docs.insert(w);
+}
 #else
 typedef vector<class_sparse_vector *> class_docs;
+static inline void class_docs_insert(class_sparse_vector *w, class_docs &docs)
+{
+  docs.push_back(w);
+}
 #endif
-typedef unordered_map<string, class_docs> class_cat_doc_list;
 
 #endif /* ROCCHIO_HPP */
