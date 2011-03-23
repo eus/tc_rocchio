@@ -41,9 +41,10 @@ ES_rseed=1
 excluded_cat=unknown
 BEP_history_script=
 BEP_history_filter=
+use_stop_list=0
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F: option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:l option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -61,6 +62,8 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F: option; do
 	S) ES_rseed=$OPTARG;;
 	H) BEP_history_script=$OPTARG;;
 	F) BEP_history_filter=$OPTARG;;
+	l) use_stop_list=1;;
+	f) file_stop_list=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -74,10 +77,12 @@ Usage: $prog_name
        -r TEMP_DIR
        -x EXEC_DIR
        -X [EXCLUDED_CATEGORY=unknown]
-       -a [EXECUTE_FROM_STEP_A=$from_step]
-       -b [EXECUTE_TO_STEP_B=$to_step]
        -H [BEP_HISTORY_FILE]
        -F [BEP_HISTORY_FILTER]
+       -l [ENABLE_STOP_LIST=no]
+       -f [STOP_LIST_FILE=EXEC_DIR/english.stop]
+       -a [EXECUTE_FROM_STEP_A=$from_step]
+       -b [EXECUTE_TO_STEP_B=$to_step]
 
 Do not use any path name having shell special characters or whitespaces.
 The name of excluded category must not contain any shell special character or
@@ -86,7 +91,7 @@ The name of excluded category must not contain any shell special character or
 Available steps:
     0.  Constructing temporary directory structure
     [TRAINING PHASE]
-    1. Tokenization and TF calculation
+    1. Tokenization, filtering stopped words if desired, and TF calculation
     2. DOC and DOC_CAT files generation
     3. IDF calculation and DIC building
     4. w vectors generation
@@ -98,7 +103,7 @@ Available steps:
     - While the W vector is obtained using parametrized Rocchio formula, the
       threshold is obtained through estimation using interpolated BEP.
     [TESTING PHASE]
-    $((testing_from_step + 0)). Tokenization and TF calculation
+    $((testing_from_step + 0)). Tokenization, filtering stopped words if desired, and TF calculation
     $((testing_from_step + 1)). DOC and DOC_CAT files generation
     $((testing_from_step + 2)). w vectors generation
     $((testing_from_step + 3)). OVA (One-vs-All) classification of test set
@@ -149,6 +154,13 @@ if [ \! -x $tokenizer ]; then
     echo "tokenizer does not exist or is not executable" >&2
     exit 1
 fi
+if [ $use_stop_list -eq 1 ]; then
+    stop_list=$exec_dir/stop_list
+    if [ ! -x $stop_list ]; then
+	echo "stop list does not exist or is not executable" >&2
+	exit 1
+    fi
+fi
 tf=$exec_dir/tf
 if [ \! -x $tf ]; then
     echo "tf does not exist or is not executable" >&2
@@ -183,6 +195,10 @@ fi
 
 tmp_training_dir=$tmp_dir/training
 tmp_testing_dir=$tmp_dir/testing
+
+if [ $use_stop_list -eq 1 -a -z "$file_stop_list" ]; then
+    file_stop_list=$exec_dir/english.stop
+fi
 
 # Intermediate files of training phase
 file_idf_dic=$tmp_dir/idf_dic.bin
@@ -224,9 +240,25 @@ function create_dir_struct {
 function tokenization_and_tf_calculation {
     repo_dir=$1/repo
 
-    for file in `ls $repo_dir`; do
- 	($tokenizer $repo_dir/$file | grep -v '^[0-9a-z]$' | $tf -o $1/$file) &
-    done
+    if [ $use_stop_list -eq 1 ]; then
+
+	# As stated in the BASH manual, the use of a pipe will make the shell
+	# waits for all children to complete.
+
+	# 40.731s at CPU usage of 100.00% with user/sys ratio of .541
+	# Try to just use a simple pipe? Or, avoid the mv first?
+	(for file in `ls $repo_dir`; do
+ 	    ($tokenizer -o $repo_dir/$file.tok $repo_dir/$file
+	     mv $repo_dir/$file{.tok,}
+	     echo $repo_dir/$file) &
+	 done | $stop_list -D $file_stop_list) \
+	| xargs -P 0 -I'{}' $tf -o $1/'{}' $repo_dir/'{}'
+    else
+	for file in `ls $repo_dir`; do
+	    ($tokenizer $repo_dir/$file \
+		| grep -v '^[0-9a-z]$' | $tf -o $1/$file) &
+	done
+    fi
 
     wait
 }

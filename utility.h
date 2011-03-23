@@ -139,6 +139,18 @@
 extern "C" {
 #endif
 
+/* Return a pointer to the file name part of the path. */
+static inline const char *get_file_name(const char *path)
+{
+  const char *pos = strrchr(path, OS_PATH_DELIMITER);
+  if (pos == NULL) {
+    // The path contains no leading directories
+    return path;
+  } else {
+    return pos + 1;
+  }
+}
+
 struct sparse_vector_entry {
   unsigned int offset;
   double value;
@@ -165,6 +177,18 @@ static inline void recover_stdin(void)
 
     in_stream = stdin;
     in_stream_name = NULL;
+  }
+}
+
+static inline void recover_stdout(void)
+{
+  if (out_stream != stdout) {
+    if (fclose(out_stream) != 0) {
+      fatal_syserror("Cannot close output %s", out_stream_name);
+    }
+
+    out_stream = stdout;
+    out_stream_name = NULL;
   }
 }
 
