@@ -88,6 +88,8 @@ Do not use any path name having shell special characters or whitespaces.
 The name of excluded category must not contain any shell special character or
     whitespace.
 
+For an arbitrary selection of random seed, specify -1 using -S.
+
 Available steps:
     0.  Constructing temporary directory structure
     [TRAINING PHASE]
@@ -198,6 +200,9 @@ tmp_testing_dir=$tmp_dir/testing
 
 if [ $use_stop_list -eq 1 -a -z "$file_stop_list" ]; then
     file_stop_list=$exec_dir/english.stop
+fi
+if [ $ES_rseed -eq -1 ]; then
+    ES_rseed=$RANDOM
 fi
 
 # Intermediate files of training phase
