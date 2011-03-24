@@ -493,6 +493,158 @@ static inline void output_BEP_history(const class_BEP_history &history,
 	  "ylabel('BEP')\n");
 }
 
+typedef unordered_map<string /* cat name */, double> class_P_avg_list;
+static inline void tune_parameter(unsigned int ES_index,
+				  unsigned int ES_percentage,
+				  unsigned int PERCENTAGE_MULTIPLIER,
+				  double tuning_init,
+				  double tuning_max,
+				  double tuning_inc,
+				  const char *BEP_h_file,
+				  const class_BEP_history_filter &BEP_h_filter,
+				  int BEP_h_filter_inverted,
+				  /* const */class_w_cats_list &all_unique_docs,
+				  class_P_avg_list &P_avg_list)
+{
+  class_BEP_history BEP_history;
+  class_data ES; // will only store documents for estimation
+  class_data LS_min_ES; /* store everything to build W vectors but the
+			 * documents needed to perform Th estimation
+			 */
+
+  /* Construct ES and LS-ES*/
+  for (class_w_cats_list::iterator j = all_unique_docs.begin();
+       j != all_unique_docs.end();
+       j++)
+    {
+      bool in_ES = ((uniform_deviate(rand()) * PERCENTAGE_MULTIPLIER)
+		    < ES_percentage);
+      bool in_excluded_categories = (j->second == NULL);
+
+      if (in_ES) {
+
+	unique_docs(ES).push_back(&(*j));
+
+	if (in_excluded_categories) {
+
+#ifdef BE_VERBOSE
+	  cat_doc_list(ES)[""].insert(&j->first);
+#else
+	  cat_doc_list(ES)[""].push_back(&j->first);
+#endif
+	} else {
+
+	  const class_set_of_cats &GS = *(j->second);
+	  for (class_set_of_cats::const_iterator k = GS.begin();
+	       k != GS.end();
+	       k++)
+	    {
+
+#ifdef BE_VERBOSE
+	      cat_doc_list(ES)[*k].insert(&j->first);
+#else
+	      cat_doc_list(ES)[*k].push_back(&j->first);
+#endif
+	    }
+	}
+      } else {
+
+	/* unique_docs(LS_min_ES) is not updated because no estimation is
+	 * carried out in LS_min_ES although cat_doc_list(LS_min_ES) needs to
+	 * be constructed to build the profile vectors
+	 */
+
+	unique_doc_count(LS_min_ES)++;
+
+	if (in_excluded_categories) {
+
+#ifdef BE_VERBOSE
+	  cat_doc_list(LS_min_ES)[""].insert(&j->first);
+#else
+	  cat_doc_list(LS_min_ES)[""].push_back(&j->first);
+#endif
+	} else {
+
+	  const class_set_of_cats &GS = *(j->second);
+
+	  for (class_set_of_cats::const_iterator k = GS.begin();
+	       k != GS.end();
+	       k++)
+	    {
+#ifdef BE_VERBOSE
+	      cat_doc_list(LS_min_ES)[*k].insert(&j->first);
+#else
+	      cat_doc_list(LS_min_ES)[*k].push_back(&j->first);
+#endif
+	    }
+	}
+      }
+    }
+  /* End of constructions */
+
+  construct_cat_profile_list(cat_profile_list(LS_min_ES),
+			     cat_doc_list(LS_min_ES));
+
+  prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
+
+  for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
+    {
+      construct_Ws(cat_profile_list(LS_min_ES),
+		   unique_doc_count(LS_min_ES),
+		   P);
+
+      for (class_cat_profile_list::iterator j
+	     = cat_profile_list(LS_min_ES).begin();
+	   j != cat_profile_list(LS_min_ES).end();
+	   j++)
+	{
+	  if (j->first.empty()) { // Don't consider excluded categories
+	    continue;
+	  }
+
+	  const string &cat_name = j->first;
+	  class_classifier &cat_classifier = j->second.second;
+	  class_W_property &prop = cat_classifier.first;
+
+	  double BEP = estimate_Th(unique_docs(ES), cat_doc_list(ES),
+				   cat_name, cat_classifier);
+	  prop.update_BEP_max(BEP, P);
+
+	  if (BEP_h_file != NULL) {
+	    BEP_history[cat_name].push_back(BEP);
+	  }
+	}
+    }
+
+  for (class_cat_profile_list::iterator j
+	 = cat_profile_list(LS_min_ES).begin();
+       j != cat_profile_list(LS_min_ES).end();
+       j++)
+    {
+      if (j->first.empty()) { // Don't consider excluded categories
+	continue;
+      }
+
+      class_W_property &prop = j->second.second.first;
+
+      P_avg_list[j->first] += prop.P_max;
+    }
+
+  if (BEP_h_file != NULL) {
+    char int2str[32];
+    snprintf(int2str, sizeof(int2str), "%u", ES_index);
+    string filename(BEP_h_file);
+    filename.append(".").append(int2str).append(".m");
+    open_out_stream(filename.c_str());
+
+    output_BEP_history(BEP_history, BEP_h_filter,
+		       BEP_h_filter_inverted, tuning_init, tuning_inc,
+		       tuning_max);
+    fprintf(out_stream, "print('-landscape', '-dsvg', '%s.svg');\n",
+	    filename.c_str());
+  }
+}
+
 static unsigned int ES_percentage_set = 0;
 static unsigned int ES_percentage;
 static const unsigned int PERCENTAGE_MULTIPLIER = 1000000;
@@ -763,153 +915,16 @@ prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
 
 /* Parameter tuning */
 const char *classifier_output_filename = out_stream_name;
-class_BEP_history BEP_history;
-typedef unordered_map<string /* cat name */, double> class_P_avg_list;
 class_P_avg_list P_avg_list;
 for (unsigned int i = 0; i < ES_count; i++)
   {
 #ifdef BE_VERBOSE
     fprintf(stderr, "*ES #%u:\n", i);
 #endif
-
-    class_data ES; // will only store documents for estimation
-    class_data LS_min_ES; /* store everything to build W vectors but the
-			   * documents needed to perform Th estimation
-			   */
-
-    /* Construct ES and LS-ES*/
-    for (class_w_cats_list::iterator j = all_unique_docs.begin();
-	 j != all_unique_docs.end();
-	 j++)
-      {
-	bool in_ES = ((uniform_deviate(rand()) * PERCENTAGE_MULTIPLIER)
-		      < ES_percentage);
-	bool in_excluded_categories = (j->second == NULL);
-
-	if (in_ES) {
-
-	  unique_docs(ES).push_back(&(*j));
-
-	  if (in_excluded_categories) {
-
-#ifdef BE_VERBOSE
-	    cat_doc_list(ES)[""].insert(&j->first);
-#else
-	    cat_doc_list(ES)[""].push_back(&j->first);
-#endif
-	  } else {
-
-	    const class_set_of_cats &GS = *(j->second);
-	    for (class_set_of_cats::const_iterator k = GS.begin();
-		 k != GS.end();
-		 k++)
-	      {
-
-#ifdef BE_VERBOSE
-		cat_doc_list(ES)[*k].insert(&j->first);
-#else
-		cat_doc_list(ES)[*k].push_back(&j->first);
-#endif
-	      }
-	  }
-	} else {
-
-	  /* unique_docs(LS_min_ES) is not updated because no estimation is
-	   * carried out in LS_min_ES although cat_doc_list(LS_min_ES) needs to
-	   * be constructed to build the profile vectors
-	   */
-
-	  unique_doc_count(LS_min_ES)++;
-
-	  if (in_excluded_categories) {
-
-#ifdef BE_VERBOSE
-	    cat_doc_list(LS_min_ES)[""].insert(&j->first);
-#else
-	    cat_doc_list(LS_min_ES)[""].push_back(&j->first);
-#endif
-	  } else {
-
-	    const class_set_of_cats &GS = *(j->second);
-
-	    for (class_set_of_cats::const_iterator k = GS.begin();
-		 k != GS.end();
-		 k++)
-	      {
-#ifdef BE_VERBOSE
-		cat_doc_list(LS_min_ES)[*k].insert(&j->first);
-#else
-		cat_doc_list(LS_min_ES)[*k].push_back(&j->first);
-#endif
-	      }
-	  }
-	}
-      }
-    /* End of constructions */
-
-    construct_cat_profile_list(cat_profile_list(LS_min_ES),
-			       cat_doc_list(LS_min_ES));
-
-    prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
-
-    for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
-      {
-	construct_Ws(cat_profile_list(LS_min_ES),
-		     unique_doc_count(LS_min_ES),
-		     P);
-
-	for (class_cat_profile_list::iterator j
-	       = cat_profile_list(LS_min_ES).begin();
-	     j != cat_profile_list(LS_min_ES).end();
-	     j++)
-	  {
-	    if (j->first.empty()) { // Don't consider excluded categories
-	      continue;
-	    }
-
-	    const string &cat_name = j->first;
-	    class_classifier &cat_classifier = j->second.second;
-	    class_W_property &prop = cat_classifier.first;
-
-	    double BEP = estimate_Th(unique_docs(ES), cat_doc_list(ES),
-				     cat_name, cat_classifier);
-	    prop.update_BEP_max(BEP, P);
-
-	    if (BEP_history_file != NULL) {
-	      BEP_history[cat_name].push_back(BEP);
-	    }
-	  }
-      }
-
-    for (class_cat_profile_list::iterator j
-	   = cat_profile_list(LS_min_ES).begin();
-	 j != cat_profile_list(LS_min_ES).end();
-	 j++)
-      {
-	if (j->first.empty()) { // Don't consider excluded categories
-	  continue;
-	}
-
-	class_W_property &prop = j->second.second.first;
-
-	P_avg_list[j->first] += prop.P_max;
-      }
-
-    if (BEP_history_file != NULL) {
-      char int2str[32];
-      snprintf(int2str, sizeof(int2str), "%u", i);
-      string filename(BEP_history_file);
-      filename.append(".").append(int2str).append(".m");
-      open_out_stream(filename.c_str());
-
-      output_BEP_history(BEP_history, BEP_history_filter,
-			 BEP_history_filter_inverted, tuning_init, tuning_inc,
-			 tuning_max);
-      fprintf(out_stream, "print('-landscape', '-dsvg', '%s.svg');\n",
-	      filename.c_str());
-
-      BEP_history.clear();
-    }
+    tune_parameter(i, ES_percentage, PERCENTAGE_MULTIPLIER,
+		   tuning_init, tuning_max, tuning_inc, BEP_history_file,
+		   BEP_history_filter, BEP_history_filter_inverted,
+		   all_unique_docs, P_avg_list);
   }
 for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
      i != cat_profile_list(LS).end();
