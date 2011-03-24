@@ -125,6 +125,9 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
 					     double &threshold)
 {
   if (bit_string.empty()) { // Nothing to be estimated
+#ifdef BE_VERBOSE
+    verbose_msg("Empty bit string (precision = %f, recall = %f)\n", 1.0, 1.0);
+#endif
     threshold = numeric_limits<double>::infinity();
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
@@ -135,6 +138,9 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
      * So, the action mentioned in the explanation in function estimate_Th in
      * the case where all bits are zero is applied.
      */
+#ifdef BE_VERBOSE
+    verbose_msg("Empty cat (precision = %f, recall = %f)\n", 1.0, 1.0);
+#endif
     threshold = numeric_limits<double>::infinity();
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
@@ -409,6 +415,10 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
      * So, the action mentioned in the above explanation in the case where all
      * bits are zero is applied.
      */
+#ifdef BE_VERBOSE
+    verbose_msg("%s has no doc (no threshold estimation carried out)\n",
+		target_cat_name.c_str());
+#endif
     target_cat_classifier.first.threshold = numeric_limits<double>::infinity();
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }

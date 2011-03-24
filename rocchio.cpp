@@ -615,6 +615,9 @@ static inline void tune_parameter(unsigned int ES_index,
 	  class_classifier &cat_classifier = j->second.second;
 	  class_W_property &prop = cat_classifier.first;
 
+#ifdef BE_VERBOSE
+	  verbose_msg("** P = %f on %s\n", P, cat_name.c_str());
+#endif
 	  double BEP = estimate_Th(unique_docs(ES), cat_doc_list(ES),
 				   cat_name, cat_classifier);
 	  prop.update_BEP_max(BEP, P);
