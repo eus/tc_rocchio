@@ -55,15 +55,16 @@ static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
 {
   const class_d_list_entry &e = bit->second;
 
-  fprintf(stderr, "@ %f |C|=%05u |~C|=%05u (b=%05u c=%05u)\n",
-	  bit->first, e.first, e.second, b, c);
+  verbose_msg("@ %f |C|=%05u |~C|=%05u (b=%05u c=%05u)\n",
+	      bit->first, e.first, e.second, b, c);
 
   if ((e.first != 0 || e.second != 0)
       && e.first_docs.empty() && e.second_docs.empty()) { // In unit testing
     return;
   }
 
-  fprintf(stderr, "\t C = {");
+  flockfile(stderr);
+  verbose_msg("\t C = {");
   for (vector<string *>::const_iterator x = e.first_docs.begin();
        x != e.first_docs.end();
        x++)
@@ -71,8 +72,10 @@ static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
       fprintf(stderr, " %s", (*x)->c_str());
     }
   fprintf(stderr, " }\n");
+  funlockfile(stderr);
 
-  fprintf(stderr, "\t~C = {");
+  flockfile(stderr);
+  verbose_msg("\t~C = {");
   for (vector<string *>::const_iterator x = e.second_docs.begin();
        x != e.second_docs.end();
        x++)
@@ -80,6 +83,7 @@ static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
       fprintf(stderr, " %s", (*x)->c_str());
     }
   fprintf(stderr, " }\n");
+  funlockfile(stderr);
 }
 #endif
 
@@ -94,7 +98,7 @@ static inline double binary_search_value(double target_upper_bound,
 
   while (iteration_count) {
 #ifdef BE_VERBOSE
-    fprintf(stderr, "BSV @%u: %f > %f > %f\n", iteration_count,
+    verbose_msg("BSV @%u: %f > %f > %f\n", iteration_count,
 	    target_upper_bound, Th, target_lower_bound);
 #endif
 
@@ -138,7 +142,7 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
   unsigned int b = 0;
   unsigned int c = cat_doc_count;
 #ifdef BE_VERBOSE
-  fprintf(stderr, "b=%05u c=%05u\n", b, c);
+  verbose_msg("b=%05u c=%05u\n", b, c);
 #endif
   class_d_list::const_reverse_iterator prev_bit = bit_string.rend();
   for (class_d_list::const_reverse_iterator bit = bit_string.rbegin();
@@ -158,7 +162,7 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
 	double curr_diff = (get_recall(cat_doc_count - next_c, next_c)
 			    - get_precision(cat_doc_count - next_c, next_b));
 #ifdef BE_VERBOSE
-	fprintf(stderr, "prev_diff %f, curr_diff %f\n", prev_diff, curr_diff);
+	verbose_msg("prev_diff %f, curr_diff %f\n", prev_diff, curr_diff);
 #endif
 	if (prev_diff > curr_diff) {
 	  b = next_b;
@@ -173,17 +177,17 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
 	  }
 	  threshold = binary_search_value(upper_bound, lower_bound);
 #ifdef BE_VERBOSE
-	fprintf(stderr,
-		"b > c [@bit]: threshold := %f > %f > %f(b = %u c = %u)\n",
-		upper_bound, threshold, lower_bound,
-		bit->second.second, bit->second.first);
+	  verbose_msg(
+		     "b > c [@bit]: threshold := %f > %f > %f(b = %u c = %u)\n",
+		     upper_bound, threshold, lower_bound,
+		     bit->second.second, bit->second.first);
 #endif
 	} else {
 	  double upper_bound = prev_bit->first;
 	  double lower_bound = bit->first;
 	  threshold = binary_search_value(upper_bound, lower_bound);
 #ifdef BE_VERBOSE
-	fprintf(stderr,
+	  verbose_msg(
 		"b > c [@prev_bit]: threshold := %f > %f > %f(b = %u c = %u)\n",
 		upper_bound, threshold, lower_bound,
 		bit->second.second, bit->second.first);
@@ -204,10 +208,9 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
 	}
 	threshold = binary_search_value(upper_bound, lower_bound);
 #ifdef BE_VERBOSE
-	fprintf(stderr,
-		"b = c: threshold := %f > %f > %f(b = %u c = %u)\n",
-		upper_bound, threshold, lower_bound,
-		bit->second.second, bit->second.first);
+	verbose_msg("b = c: threshold := %f > %f > %f(b = %u c = %u)\n",
+		    upper_bound, threshold, lower_bound,
+		    bit->second.second, bit->second.first);
 #endif
 	break;
 
@@ -223,10 +226,8 @@ static inline double do_threshold_estimation(unsigned int cat_doc_count,
   double recall = get_recall(cat_doc_count - c, c);
 
 #ifdef BE_VERBOSE
-  fprintf(stderr,
-	  "a = %u, b = %u, c = %u\n"
-	  "precision = %f, recall = %f\n",
-	  cat_doc_count - c, b, c, precision, recall);
+  verbose_msg("a = %u, b = %u, c = %u\n", cat_doc_count - c, b, c);
+  verbose_msg("precision = %f, recall = %f\n", precision, recall);
 #endif
 
   return 0.5 * (precision + recall);
@@ -241,7 +242,7 @@ static inline void test_do_threshold_estimation(void)
   double deviation;
 
 #ifdef BE_VERBOSE
-  fprintf(stderr, "*test_do_threshold_estimation():\n");
+  verbose_msg("*test_do_threshold_estimation():\n");
 #endif
 
   /* 1) 1101001 can be divided into 1101 and 001 where b = c = 1 and a = 3 */
@@ -450,11 +451,11 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
   /* End of bits construction */
 
 #ifdef BE_VERBOSE
-  fprintf(stderr,
-	  "The number of bits (i.e., unique dot product values) is %u\n"
-	  "Threshold estimation on %s (c = %u = |C|, |~C| = %u)\n",
-	  d_list.size(), target_cat_name.c_str(), cat_doc_count,
-	  unique_docs.size() - cat_doc_count);
+  verbose_msg("The number of bits (i.e., unique dot product values) is %u\n",
+	      d_list.size());
+  verbose_msg("Threshold estimation on %s (c = %u = |C|, |~C| = %u)\n",
+	      target_cat_name.c_str(), cat_doc_count,
+	      unique_docs.size() - cat_doc_count);
 #endif
   
   double interpolated_BEP
@@ -462,7 +463,7 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
 			      target_cat_classifier.first.threshold);
 
 #ifdef BE_VERBOSE
-  fprintf(stderr, "Interpolated BEP = %f\n", interpolated_BEP);
+  verbose_msg("Interpolated BEP = %f\n", interpolated_BEP);
 #endif
 
   return interpolated_BEP;
@@ -523,7 +524,7 @@ static inline void test_estimate_Th(void)
 
 #ifdef BE_VERBOSE
 
-  fprintf(stderr, "*test_estimate_Th():\n");
+  verbose_msg("*test_estimate_Th():\n");
 
 #define make_doc(cat_name, doc_name, first_w_entry) do {	\
     __make_doc(cat_name, doc_name, first_w_entry);		\
@@ -536,7 +537,7 @@ static inline void test_estimate_Th(void)
     w_to_doc_name.clear();			\
   } while (0)
 #define do_test(test_name, expected_interpolated_BEP, expected_Th) do {	\
-    fprintf(stderr, "** " test_name ":\n");				\
+    verbose_msg("** " test_name ":\n");					\
     __do_test(expected_interpolated_BEP, expected_Th);			\
   } while (0)
 

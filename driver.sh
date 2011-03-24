@@ -42,9 +42,10 @@ excluded_cat=unknown
 BEP_history_script=
 BEP_history_filter=
 use_stop_list=0
+tuner_count=1
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:l option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -64,6 +65,7 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:l option; do
 	F) BEP_history_filter=$OPTARG;;
 	l) use_stop_list=1;;
 	f) file_stop_list=$OPTARG;;
+	J) tuner_count=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -81,6 +83,7 @@ Usage: $prog_name
        -F [BEP_HISTORY_FILTER]
        -l [ENABLE_STOP_LIST=no]
        -f [STOP_LIST_FILE=EXEC_DIR/english.stop]
+       -J [PARAMETER_TUNING_THREAD_COUNT=1]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
 
@@ -340,18 +343,19 @@ function step_5 {
     time (if [ -z "$BEP_history_script" ]; then
 	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
 	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
-	    $file_w_vectors_training
+	    -J $tuner_count $file_w_vectors_training
 	else
 	    if [ -z "$BEP_history_filter" ]; then
 		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
-		    $file_w_vectors_training
+		    -J $tuner_count $file_w_vectors_training
 	    else
 		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
-		    -F $BEP_history_filter $file_w_vectors_training
+		    -F $BEP_history_filter -J $tuner_count \
+		    $file_w_vectors_training
 	    fi
 	fi) \
 	    || exit 1
