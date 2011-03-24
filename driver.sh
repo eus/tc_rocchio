@@ -336,7 +336,7 @@ function step_4 {
 }
 
 function step_5 {
-    echo -n "5. [TRAINING] PRCs generation..."
+    echo -n "5. [TRAINING] PRCs generation [seed=$ES_rseed]..."
     time (if [ -z "$BEP_history_script" ]; then
 	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
 	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
