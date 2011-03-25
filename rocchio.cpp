@@ -607,6 +607,10 @@ static inline void tune_parameter(unsigned int ES_index,
 
 	unique_docs(ES).push_back(&(*j));
 
+#ifdef BE_VERBOSE
+	verbose_msg("ES_doc %s\n", w_to_doc_name[&j->first].c_str());
+#endif
+
 	if (in_excluded_categories) {
 
 #ifdef BE_VERBOSE

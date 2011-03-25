@@ -7,10 +7,10 @@ endif
 
 C_EXECUTABLES := tokenizer reader_vec
 CXX_EXECUTABLES := tf idf_dic w_to_vector rocchio classifier perf_measurer \
-	stop_list
+	stop_list mod_vec
 OBJECTS := tokenizer.o tf.o idf_dic.o \
 	w_to_vector.o reader_vec.o rocchio.o classifier.o perf_measurer.o \
-	stop_list.o
+	stop_list.o mod_vec.o
 
 COMMON_COMPILER_FLAGS := -Wall $(if $(DONT_OPTIMIZE),-g3,-O3) \
 	$(ARCHITECTURE_DEPENDENT_OPTIMIZATION)
@@ -35,6 +35,7 @@ tokenizer:
 reader_vec.o: utility.h
 reader_vec:
 
+mod_vec.o: utility.h utility_vector.hpp
 stop_list.o: utility.h utility.hpp
 tf.o: utility.h
 idf_dic.o: utility.h utility.hpp
