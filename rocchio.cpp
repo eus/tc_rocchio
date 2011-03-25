@@ -812,6 +812,73 @@ static void *run_parameter_tuner(void *args)
   return &data->tuner_exit_status;
 }
 
+typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
+static inline void parameter_tuning(unsigned int ES_count,
+				    unsigned int tuner_threads_count,
+				 class_args_per_tuner_list &args_per_tuner_list)
+{
+  typedef vector<pthread_t> class_tuner_list;
+  class_tuner_list tuner_list(tuner_threads_count);
+
+  unsigned int ES_index = 0;
+  while (ES_index < ES_count) {
+    for (class_tuner_list::iterator tuner = tuner_list.begin();
+	 tuner != tuner_list.end();
+	 tuner++)
+      {
+	if (ES_index == ES_count) {
+	  break;
+	}
+
+	args_per_tuner_list[ES_index].ES_index = ES_index;
+	if (pthread_create(&*tuner, NULL, run_parameter_tuner,
+			   &args_per_tuner_list[ES_index]) != 0) {
+	  fatal_syserror("Cannot create tuner thread at ES_index = %u",
+			 ES_index);
+	}
+
+	ES_index++;
+      }
+
+    /* Sync point (A faster way would be to create a new thread when an
+     * existing thread completes instead of waiting for all existing threads to
+     * complete; but that is more complicated)
+     */
+    for (class_tuner_list::const_iterator tuner = tuner_list.begin();
+	 tuner != tuner_list.end();
+	 tuner++)
+      {
+	if (pthread_join(*tuner, NULL) != 0) {
+	  fatal_syserror("Cannot wait for thread %u",
+			 static_cast<unsigned int>(*tuner));
+	}
+#ifdef BE_VERBOSE
+	verbose_msg("Tuner of ES #%u finishes\n", tuner - tuner_list.begin());
+#endif
+      }
+    /* End of synchronization */
+  }
+}
+
+static inline void sum_best_P_per_cat(
+			   const class_args_per_tuner_list &args_per_tuner_list,
+			   class_best_P_per_cat &best_P_per_cat_sum)
+{
+  for (class_args_per_tuner_list::const_iterator tuner_arg
+	 = args_per_tuner_list.begin();
+       tuner_arg != args_per_tuner_list.end();
+       tuner_arg++)
+    {
+      for (class_best_P_per_cat::const_iterator cat_best_P
+	     = tuner_arg->best_P_per_cat.begin();
+	   cat_best_P != tuner_arg->best_P_per_cat.end();
+	   cat_best_P++)
+	{
+	  best_P_per_cat_sum[cat_best_P->first] += cat_best_P->second;
+	}
+    }
+}
+
 MAIN_BEGIN(
 "rocchio",
 "If input file is not given, stdin is read for input. Otherwise, the input\n"
@@ -1087,90 +1154,35 @@ prepare_Ws(cat_profile_list(LS), cat_doc_list(LS), multicats_docs_list(LS));
 prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
 #endif
 
-/* Parameter tuning */
-typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
-class_args_per_tuner_list args_per_tuner_list(ES_count);
+if (ES_count > 0) {
+  class_args_per_tuner_list args_per_tuner_list(ES_count);
+  parameter_tuning(ES_count, tuner_threads_count, args_per_tuner_list);
 
-typedef vector<pthread_t> class_tuner_list;
-class_tuner_list tuner_list(tuner_threads_count);
+  class_best_P_per_cat best_P_per_cat_sum;
+  sum_best_P_per_cat(args_per_tuner_list, best_P_per_cat_sum);
 
-unsigned int ES_index = 0;
-while (ES_index < ES_count) {
-  for (class_tuner_list::iterator tuner = tuner_list.begin();
-       tuner != tuner_list.end();
-       tuner++)
+  for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+       i != cat_profile_list(LS).end();
+       i++)
     {
-      if (ES_index == ES_count) {
-	break;
+      if (i->first.empty()) { // Don't consider excluded categories
+	continue;
       }
 
-      args_per_tuner_list[ES_index].ES_index = ES_index;
-      if (pthread_create(&*tuner, NULL, run_parameter_tuner,
-			 &args_per_tuner_list[ES_index]) != 0) {
-	fatal_syserror("Cannot create tuner thread at ES_index = %u", ES_index);
-      }
-
-      ES_index++;
-    }
-
-  /* Sync point (A faster way would be to create a new thread when an
-   * existing thread completes instead of waiting for all existing threads to
-   * complete; but that is more complicated)
-   */
-  for (class_tuner_list::const_iterator tuner = tuner_list.begin();
-       tuner != tuner_list.end();
-       tuner++)
-    {
-      if (pthread_join(*tuner, NULL) != 0) {
-	fatal_syserror("Cannot wait for thread %u",
-		       static_cast<unsigned int>(*tuner));
-      }
-#ifdef BE_VERBOSE
-      verbose_msg("Tuner of ES #%u finishes\n", tuner - tuner_list.begin());
-#endif
-    }
-  /* End of synchronization */
- }
-
-/* P_avg initialization */
-class_best_P_per_cat P_avg_list;
-for (class_args_per_tuner_list::const_iterator tuner_arg
-       = args_per_tuner_list.begin();
-     tuner_arg != args_per_tuner_list.end();
-     tuner_arg++)
-  {
-    for (class_best_P_per_cat::const_iterator cat_best_P
-	   = tuner_arg->best_P_per_cat.begin();
-	 cat_best_P != tuner_arg->best_P_per_cat.end();
-	 cat_best_P++)
-      {
-	P_avg_list[cat_best_P->first] += cat_best_P->second;
-      }
-  }
-/* End of P_avg initialization */
-
-for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-     i != cat_profile_list(LS).end();
-     i++)
-  {
-    if (i->first.empty()) { // Don't consider excluded categories
-      continue;
-    }
-
-    i->second.second.first.P_avg = (P_avg_list[i->first]
-				    / static_cast<double>(ES_count));
+      i->second.second.first.P_avg = (best_P_per_cat_sum[i->first]
+				      / static_cast<double>(ES_count));
 
 #ifdef BE_VERBOSE
-    verbose_msg("Best Ps of %s:\n", i->first.c_str());
-    for (unsigned int ES_index = 0; ES_index < ES_count; ES_index++) {
-      verbose_msg("@ES #%u: %f\n", ES_index,
-		  args_per_tuner_list[ES_index].best_P_per_cat[i->first]);
-    }    
-    verbose_msg("Sum of Ps = %f; P_avg = %f\n",
-		P_avg_list[i->first], i->second.second.first.P_avg);
+      verbose_msg("Best Ps of %s:\n", i->first.c_str());
+      for (unsigned int ES_index = 0; ES_index < ES_count; ES_index++) {
+	verbose_msg("@ES #%u: %f\n", ES_index,
+		    args_per_tuner_list[ES_index].best_P_per_cat[i->first]);
+      }    
+      verbose_msg("Sum of Ps = %f; P_avg = %f\n",
+		  best_P_per_cat_sum[i->first], i->second.second.first.P_avg);
 #endif
-  }
-/* End of parameter tuning */
+    }
+}
 
 construct_Ws(cat_profile_list(LS), unique_doc_count(LS),
 	     ((ES_count == 0) ? tuning_init : -1));
