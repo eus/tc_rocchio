@@ -54,17 +54,32 @@ CLEANUP_BEGIN
 
 static class_w_cats_list all_unique_docs; /* Contains all w in the input */
 
+#ifdef DONT_FOLLOW_ROI
+typedef pair<pair<class_sparse_vector /* sum of w in C */,
+		  class_sparse_vector /* adjustment for multicats docs */>,
+	     unsigned int /* |C| */> class_W_construction;
+#else
 typedef pair<class_sparse_vector /* sum of w in C */,
 	     unsigned int /* |C| */> class_W_construction;
+#endif
 typedef pair<class_W_construction, class_classifier> class_cat_profile;
 typedef pair<string /* cat name */,
 	     class_cat_profile /* classifier of this cat */
 	     > class_cat_profile_list_entry;
 typedef vector<class_cat_profile_list_entry> class_cat_profile_list;
 
+#ifdef DONT_FOLLOW_ROI
+typedef unordered_map<class_sparse_vector *,
+		      unsigned int /* |GS(d)| - 1 */> class_multicats_docs;
+typedef pair<pair<pair<class_cat_doc_list,
+		       class_multicats_docs>,
+		  unsigned int /* unique doc count (i.e., M) */>,
+	     class_cat_profile_list> class_W_construction_material;
+#else
 typedef pair<pair<class_cat_doc_list,
 		  unsigned int /* unique doc count (i.e., M) */>,
 	     class_cat_profile_list> class_W_construction_material;
+#endif
 
 typedef pair<class_unique_docs_for_estimating_Th,
 	     class_W_construction_material> class_data;
@@ -75,8 +90,18 @@ static inline unsigned int &unique_doc_count(class_data &data)
 }
 static inline class_cat_doc_list &cat_doc_list(class_data &data)
 {
+#ifdef DONT_FOLLOW_ROI
+  return data.second.first.first.first;
+#else
   return data.second.first.first;
+#endif
 }
+#ifdef DONT_FOLLOW_ROI
+static inline class_multicats_docs &multicats_docs_list(class_data &data)
+{
+  return data.second.first.first.second;
+}
+#endif
 static inline class_unique_docs_for_estimating_Th &unique_docs(class_data &data)
 {
   return data.first;
@@ -163,6 +188,13 @@ static inline void string_complete_fn(void)
 
     class_set_of_cats &doc_GS = GS_entry->second;
     D_ptr->second = &doc_GS;
+
+#ifdef DONT_FOLLOW_ROI
+    unsigned int doc_GS_cardinality = doc_GS.size();
+    if (doc_GS_cardinality > 1) {
+      multicats_docs_list(LS)[&D_ptr->first] = doc_GS_cardinality - 1;
+    }
+#endif
 
     /* Step 4 */
     for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
@@ -283,6 +315,17 @@ static inline void construct_cat_profile_list(class_cat_profile_list &list,
     }
 }
 
+#ifdef DONT_FOLLOW_ROI
+/* For each cat profile in the cat profile list, find a set of docs that
+ * belongs to the cat profile in cat doc list, sum the w vectors of those
+ * documents registering the adjustment necessary for documents categorized into
+ * more than one category, and store the result in the cat profile for later
+ * construction of W vector.
+ */
+static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
+			      const class_cat_doc_list &cat_doc_list,
+			      const class_multicats_docs &multicats_docs)
+#else
 /* For each cat profile in the cat profile list, find a set of docs that
  * belongs to the cat profile in cat doc list, sum the w vectors of those
  * documents and store the result in the cat profile for later construction of
@@ -290,6 +333,7 @@ static inline void construct_cat_profile_list(class_cat_profile_list &list,
  */
 static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 			      const class_cat_doc_list &cat_doc_list)
+#endif
 {
   for (class_cat_profile_list::iterator i = cat_profile_list.begin();
        i != cat_profile_list.end();
@@ -302,7 +346,12 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
       if (e == cat_doc_list.end() || e->second.empty()) {
 
 	cat_W_construction.second = 0; // |C|
+#ifdef DONT_FOLLOW_ROI
+	cat_W_construction.first.first.clear(); // no doc, sum of w vectors is 0
+	cat_W_construction.first.second.clear(); // no doc, no adjustment needed
+#else
 	cat_W_construction.first.clear(); // Has no doc, sum of w vectors is 0
+#endif
 	continue;
       }
 
@@ -313,7 +362,17 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 	   j != cat_docs.end();
 	   j++)
 	{
+#ifdef DONT_FOLLOW_ROI
+	  add_sparse_vector(cat_W_construction.first.first, **j);
+
+	  class_multicats_docs::const_iterator d = multicats_docs.find(*j);
+	  if (d != multicats_docs.end()) {
+	    add_weighted_sparse_vector(cat_W_construction.first.second, **j,
+				       d->second);
+	  }
+#else
 	  add_sparse_vector(cat_W_construction.first, **j);
+#endif
 	}
     }
 }
@@ -371,15 +430,12 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       unsigned int not_C_cardinality = unique_doc_count - C_cardinality;
 
       class_sparse_vector &W = cat_profile.second.second;
-      const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
 
       /* The first term. If C_cardinality == 0, sum_w_in_C should be all zeros
        * (i.e., the sparse vector is empty), and so, W should be empty too  */
       if (C_cardinality == 0) {
 	W.clear();
 	continue; // W is already all 0. There is no point to do subtraction.
-      } else {
-	assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
       }
 
       /* Adjusting P if P is < 0 */
@@ -388,10 +444,23 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       }
       /* End of adjustment */
 
+#ifdef DONT_FOLLOW_ROI
+      const class_sparse_vector &sum_w_in_C = cat_profile.first.first.first;
+#else
+      const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
+#endif
+      assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
+
       /* The second term, the penalizing part. P is assumed to be >= 0.0 */
       if (fpclassify(P) != FP_ZERO && not_C_cardinality != 0)
 	{
 	  double multiplier = P / static_cast<double>(not_C_cardinality);
+
+#ifdef DONT_FOLLOW_ROI
+	  const class_sparse_vector &adjustment
+	    = cat_profile.first.first.second;
+	  add_weighted_sparse_vector(W, adjustment, multiplier);
+#endif
 
 	  for (class_cat_profile_list::const_iterator j
 		 = cat_profile_list.begin();
@@ -401,9 +470,13 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 	      if (i == j) {
 		continue;
 	      }
-	      
+#ifdef DONT_FOLLOW_ROI
+	      const class_sparse_vector &sum_w_not_in_C
+		= j->second.first.first.first;
+#else
 	      const class_sparse_vector &sum_w_not_in_C
 		= j->second.first.first;
+#endif
 
 	      for (class_sparse_vector::const_iterator k
 		     = sum_w_not_in_C.begin();
@@ -576,6 +649,12 @@ static inline void tune_parameter(unsigned int ES_index,
 
 	  const class_set_of_cats &GS = *(j->second);
 
+#ifdef DONT_FOLLOW_ROI
+	  unsigned int GS_cardinality = GS.size();
+	  if (GS_cardinality > 1) {
+	    multicats_docs_list(LS_min_ES)[&D_ptr->first] = GS_cardinality - 1;
+	  }
+#endif
 	  for (class_set_of_cats::const_iterator k = GS.begin();
 	       k != GS.end();
 	       k++)
@@ -594,7 +673,12 @@ static inline void tune_parameter(unsigned int ES_index,
   construct_cat_profile_list(cat_profile_list(LS_min_ES),
 			     cat_doc_list(LS_min_ES));
 
+#ifdef DONT_FOLLOW_ROI
+  prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES),
+	     multicats_docs_list(LS_min_ES));
+#else
   prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
+#endif
 
   for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
     {
@@ -726,6 +810,73 @@ static void *run_parameter_tuner(void *args)
 		 *data->all_unique_docs, data->best_P_per_cat);
 
   return &data->tuner_exit_status;
+}
+
+typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
+static inline void parameter_tuning(unsigned int ES_count,
+				    unsigned int tuner_threads_count,
+				 class_args_per_tuner_list &args_per_tuner_list)
+{
+  typedef vector<pthread_t> class_tuner_list;
+  class_tuner_list tuner_list(tuner_threads_count);
+
+  unsigned int ES_index = 0;
+  while (ES_index < ES_count) {
+    for (class_tuner_list::iterator tuner = tuner_list.begin();
+	 tuner != tuner_list.end();
+	 tuner++)
+      {
+	if (ES_index == ES_count) {
+	  break;
+	}
+
+	args_per_tuner_list[ES_index].ES_index = ES_index;
+	if (pthread_create(&*tuner, NULL, run_parameter_tuner,
+			   &args_per_tuner_list[ES_index]) != 0) {
+	  fatal_syserror("Cannot create tuner thread at ES_index = %u",
+			 ES_index);
+	}
+
+	ES_index++;
+      }
+
+    /* Sync point (A faster way would be to create a new thread when an
+     * existing thread completes instead of waiting for all existing threads to
+     * complete; but that is more complicated)
+     */
+    for (class_tuner_list::const_iterator tuner = tuner_list.begin();
+	 tuner != tuner_list.end();
+	 tuner++)
+      {
+	if (pthread_join(*tuner, NULL) != 0) {
+	  fatal_syserror("Cannot wait for thread %u",
+			 static_cast<unsigned int>(*tuner));
+	}
+#ifdef BE_VERBOSE
+	verbose_msg("Tuner of ES #%u finishes\n", tuner - tuner_list.begin());
+#endif
+      }
+    /* End of synchronization */
+  }
+}
+
+static inline void sum_best_P_per_cat(
+			   const class_args_per_tuner_list &args_per_tuner_list,
+			   class_best_P_per_cat &best_P_per_cat_sum)
+{
+  for (class_args_per_tuner_list::const_iterator tuner_arg
+	 = args_per_tuner_list.begin();
+       tuner_arg != args_per_tuner_list.end();
+       tuner_arg++)
+    {
+      for (class_best_P_per_cat::const_iterator cat_best_P
+	     = tuner_arg->best_P_per_cat.begin();
+	   cat_best_P != tuner_arg->best_P_per_cat.end();
+	   cat_best_P++)
+	{
+	  best_P_per_cat_sum[cat_best_P->first] += cat_best_P->second;
+	}
+    }
 }
 
 MAIN_BEGIN(
@@ -997,92 +1148,41 @@ MAIN_INPUT_START
 MAIN_INPUT_END /* All w vectors are stored in LS */
 
 construct_cat_profile_list(cat_profile_list(LS), cat_doc_list(LS));
+#ifdef DONT_FOLLOW_ROI
+prepare_Ws(cat_profile_list(LS), cat_doc_list(LS), multicats_docs_list(LS));
+#else
 prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
-
-/* Parameter tuning */
-typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
-class_args_per_tuner_list args_per_tuner_list(ES_count);
-
-typedef vector<pthread_t> class_tuner_list;
-class_tuner_list tuner_list(tuner_threads_count);
-
-unsigned int ES_index = 0;
-while (ES_index < ES_count) {
-  for (class_tuner_list::iterator tuner = tuner_list.begin();
-       tuner != tuner_list.end();
-       tuner++)
-    {
-      if (ES_index == ES_count) {
-	break;
-      }
-
-      args_per_tuner_list[ES_index].ES_index = ES_index;
-      if (pthread_create(&*tuner, NULL, run_parameter_tuner,
-			 &args_per_tuner_list[ES_index]) != 0) {
-	fatal_syserror("Cannot create tuner thread at ES_index = %u", ES_index);
-      }
-
-      ES_index++;
-    }
-
-  /* Sync point (A faster way would be to create a new thread when an
-   * existing thread completes instead of waiting for all existing threads to
-   * complete; but that is more complicated)
-   */
-  for (class_tuner_list::const_iterator tuner = tuner_list.begin();
-       tuner != tuner_list.end();
-       tuner++)
-    {
-      if (pthread_join(*tuner, NULL) != 0) {
-	fatal_syserror("Cannot wait for thread %u",
-		       static_cast<unsigned int>(*tuner));
-      }
-#ifdef BE_VERBOSE
-      verbose_msg("Tuner of ES #%u finishes\n", tuner - tuner_list.begin());
 #endif
-    }
-  /* End of synchronization */
- }
 
-/* P_avg initialization */
-class_best_P_per_cat P_avg_list;
-for (class_args_per_tuner_list::const_iterator tuner_arg
-       = args_per_tuner_list.begin();
-     tuner_arg != args_per_tuner_list.end();
-     tuner_arg++)
-  {
-    for (class_best_P_per_cat::const_iterator cat_best_P
-	   = tuner_arg->best_P_per_cat.begin();
-	 cat_best_P != tuner_arg->best_P_per_cat.end();
-	 cat_best_P++)
-      {
-	P_avg_list[cat_best_P->first] += cat_best_P->second;
+if (ES_count > 0) {
+  class_args_per_tuner_list args_per_tuner_list(ES_count);
+  parameter_tuning(ES_count, tuner_threads_count, args_per_tuner_list);
+
+  class_best_P_per_cat best_P_per_cat_sum;
+  sum_best_P_per_cat(args_per_tuner_list, best_P_per_cat_sum);
+
+  for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+       i != cat_profile_list(LS).end();
+       i++)
+    {
+      if (i->first.empty()) { // Don't consider excluded categories
+	continue;
       }
-  }
-/* End of P_avg initialization */
 
-for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-     i != cat_profile_list(LS).end();
-     i++)
-  {
-    if (i->first.empty()) { // Don't consider excluded categories
-      continue;
-    }
-
-    i->second.second.first.P_avg = (P_avg_list[i->first]
-				    / static_cast<double>(ES_count));
+      i->second.second.first.P_avg = (best_P_per_cat_sum[i->first]
+				      / static_cast<double>(ES_count));
 
 #ifdef BE_VERBOSE
-    verbose_msg("Best Ps of %s:\n", i->first.c_str());
-    for (unsigned int ES_index = 0; ES_index < ES_count; ES_index++) {
-      verbose_msg("@ES #%u: %f\n", ES_index,
-		  args_per_tuner_list[ES_index].best_P_per_cat[i->first]);
-    }    
-    verbose_msg("Sum of Ps = %f; P_avg = %f\n",
-		P_avg_list[i->first], i->second.second.first.P_avg);
+      verbose_msg("Best Ps of %s:\n", i->first.c_str());
+      for (unsigned int ES_index = 0; ES_index < ES_count; ES_index++) {
+	verbose_msg("@ES #%u: %f\n", ES_index,
+		    args_per_tuner_list[ES_index].best_P_per_cat[i->first]);
+      }    
+      verbose_msg("Sum of Ps = %f; P_avg = %f\n",
+		  best_P_per_cat_sum[i->first], i->second.second.first.P_avg);
 #endif
-  }
-/* End of parameter tuning */
+    }
+}
 
 construct_Ws(cat_profile_list(LS), unique_doc_count(LS),
 	     ((ES_count == 0) ? tuning_init : -1));

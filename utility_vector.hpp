@@ -31,6 +31,22 @@ typedef unsigned int class_sparse_vector_offset;
 /* An empty sparse vector means that all entries are zero. */
 typedef unordered_map<class_sparse_vector_offset, double> class_sparse_vector;
 
+/* Add weight * src to dst (it is a logic error to use a combination of weight
+ * and any of the src element that results in subtraction instead of addition
+ * because this function does not delete elements that are zero in dst; unless
+ * you know that such a subtraction will never result in zero)
+ */
+static inline void add_weighted_sparse_vector(class_sparse_vector &dst,
+					      const class_sparse_vector &src,
+					      const double weight)
+{
+  for (class_sparse_vector::const_iterator i = src.cbegin();
+       i != src.cend(); i++)
+    {
+      dst[i->first] += weight * i->second;
+    }
+}
+
 /* Assign weight * src to dst */
 static inline void assign_weighted_sparse_vector(class_sparse_vector &dst,
 						 const class_sparse_vector &src,
@@ -45,7 +61,11 @@ static inline void assign_weighted_sparse_vector(class_sparse_vector &dst,
     }
 }
 
-/* Add src to dst */
+/* Add src to dst (it is a logic error to use a combination of weight and
+ * any of the src element that results in addition because this function does
+ * not delete elements that are zero in dst; unless you know that such a
+ * subtraction will never result in zero)
+ */
 static inline void add_sparse_vector(class_sparse_vector &dst,
 				     const class_sparse_vector &src)
 {
