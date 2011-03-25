@@ -70,7 +70,7 @@ typedef vector<class_cat_profile_list_entry> class_cat_profile_list;
 
 #ifdef DONT_FOLLOW_ROI
 typedef unordered_map<class_sparse_vector *,
-		      unsigned int /* cache of |GS(d)| */> class_multicats_docs;
+		      unsigned int /* |GS(d)| - 1 */> class_multicats_docs;
 typedef pair<pair<pair<class_cat_doc_list,
 		       class_multicats_docs>,
 		  unsigned int /* unique doc count (i.e., M) */>,
@@ -190,7 +190,10 @@ static inline void string_complete_fn(void)
     D_ptr->second = &doc_GS;
 
 #ifdef DONT_FOLLOW_ROI
-    multicats_docs_list(LS)[&D_ptr->first] = doc_GS.size();
+    unsigned int doc_GS_cardinality = doc_GS.size();
+    if (doc_GS_cardinality > 1) {
+      multicats_docs_list(LS)[&D_ptr->first] = doc_GS_cardinality - 1;
+    }
 #endif
 
     /* Step 4 */
@@ -345,6 +348,7 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 	cat_W_construction.second = 0; // |C|
 #ifdef DONT_FOLLOW_ROI
 	cat_W_construction.first.first.clear(); // no doc, sum of w vectors is 0
+	cat_W_construction.first.second.clear(); // no doc, no adjustment needed
 #else
 	cat_W_construction.first.clear(); // Has no doc, sum of w vectors is 0
 #endif
@@ -364,7 +368,7 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 	  class_multicats_docs::const_iterator d = multicats_docs.find(*j);
 	  if (d != multicats_docs.end()) {
 	    add_weighted_sparse_vector(cat_W_construction.first.second, **j,
-				       d->second - 1);
+				       d->second);
 	  }
 #else
 	  add_sparse_vector(cat_W_construction.first, **j);
@@ -645,6 +649,12 @@ static inline void tune_parameter(unsigned int ES_index,
 
 	  const class_set_of_cats &GS = *(j->second);
 
+#ifdef DONT_FOLLOW_ROI
+	  unsigned int GS_cardinality = GS.size();
+	  if (GS_cardinality > 1) {
+	    multicats_docs_list(LS_min_ES)[&D_ptr->first] = GS_cardinality - 1;
+	  }
+#endif
 	  for (class_set_of_cats::const_iterator k = GS.begin();
 	       k != GS.end();
 	       k++)
