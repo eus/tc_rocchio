@@ -28,6 +28,8 @@ TIMEFORMAT=' \[%3Rs at CPU usage of %P%% with user/sys ratio of `echo "scale=3; 
 prog_name=driver.sh
 
 testing_from_step=6
+file_w_vectors_name=training_set_w_vectors.bin
+file_w_vectors_testing_name=testing_set_w_vectors.bin
 
 # Default values
 from_step=0
@@ -43,9 +45,10 @@ BEP_history_script=
 BEP_history_filter=
 use_stop_list=0
 tuner_count=1
+custom_ES=
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ: option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -66,6 +69,7 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ: option; do
 	l) use_stop_list=1;;
 	f) file_stop_list=$OPTARG;;
 	J) tuner_count=$OPTARG;;
+	T) custom_ES=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -84,6 +88,7 @@ Usage: $prog_name
        -l [ENABLE_STOP_LIST=no]
        -f [STOP_LIST_FILE=EXEC_DIR/english.stop]
        -J [PARAMETER_TUNING_THREAD_COUNT=1]
+       -T [CUSTOM_ES=]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
 
@@ -107,6 +112,17 @@ Available steps:
       w vector is classified into C.
     - While the W vector is obtained using parametrized Rocchio formula, the
       threshold is obtained through estimation using interpolated BEP.
+    - The options -H and -F can be used to generate a GNU Octave
+      (Matlab-compatible) script to plot the various BEP values of the
+      categories during parameter tuning. This can be used to see that
+      parameter tuning process corresponds to feature selection process because
+      the BEP plots are convex curves.
+    - The option -T can be used to specify a custom ES. For example, to do
+      parameter tuning on the whole training set instead of a random subset of
+      the training set, TEMP_DIR/$file_w_vectors_name can be specified after
+      Step 4 has been completed. To do parameter tuning on the whole test set,
+      TEMP_DIR/$file_w_vectors_testing_name can be specified after Step $((testing_from_step + 2))
+      has been completed.
     [TESTING PHASE]
     $((testing_from_step + 0)). Tokenization, filtering stopped words if desired, and TF calculation
     $((testing_from_step + 1)). DOC and DOC_CAT files generation
@@ -210,14 +226,14 @@ fi
 
 # Intermediate files of training phase
 file_idf_dic=$tmp_dir/idf_dic.bin
-file_w_vectors_training=$tmp_dir/training_set_w_vectors.bin
+file_w_vectors_training=$tmp_dir/$file_w_vectors_name
 file_W_vectors=$tmp_dir/W_vectors.bin
 file_doc_cat_training=$tmp_dir/training_set_doc_cat.txt
 file_doc_training=$tmp_dir/training_set_doc.txt
 # End of intermediate files of training phase
 
 # Intermediate files of testing phase
-file_w_vectors_testing=$tmp_dir/testing_set_w_vectors.bin
+file_w_vectors_testing=$tmp_dir/$file_w_vectors_testing_name
 file_doc_cat_testing=$tmp_dir/testing_set_doc_cat.txt
 file_doc_cat_perf_measure=$tmp_dir/testing_set_perf_measure_doc_cat.txt
 file_doc_testing=$tmp_dir/testing_set_doc.txt
@@ -340,7 +356,8 @@ function step_4 {
 
 function step_5 {
     echo -n "5. [TRAINING] PRCs generation [seed=$ES_rseed]..."
-    time (if [ -z "$BEP_history_script" ]; then
+    time (if [ -z "$custom_ES" ]; then
+	if [ -z "$BEP_history_script" ]; then
 	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
 	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
 	    -J $tuner_count $file_w_vectors_training
@@ -357,7 +374,27 @@ function step_5 {
 		    -F $BEP_history_filter -J $tuner_count \
 		    $file_w_vectors_training
 	    fi
-	fi) \
+	fi
+    else
+	if [ -z "$BEP_history_script" ]; then
+	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
+	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
+	    -J $tuner_count -T $custom_ES $file_w_vectors_training
+	else
+	    if [ -z "$BEP_history_filter" ]; then
+		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		    -o $file_W_vectors -H $BEP_history_script \
+		    -J $tuner_count -T $custom_ES $file_w_vectors_training
+	    else
+		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		    -o $file_W_vectors -H $BEP_history_script \
+		    -F $BEP_history_filter -J $tuner_count -T $custom_ES \
+		    $file_w_vectors_training
+	    fi
+	fi
+    fi) \
 	    || exit 1
 }
 
