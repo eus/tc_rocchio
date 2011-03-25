@@ -54,17 +54,32 @@ CLEANUP_BEGIN
 
 static class_w_cats_list all_unique_docs; /* Contains all w in the input */
 
+#ifdef DONT_FOLLOW_ROI
+typedef pair<pair<class_sparse_vector /* sum of w in C */,
+		  class_sparse_vector /* adjustment for multicats docs */>,
+	     unsigned int /* |C| */> class_W_construction;
+#else
 typedef pair<class_sparse_vector /* sum of w in C */,
 	     unsigned int /* |C| */> class_W_construction;
+#endif
 typedef pair<class_W_construction, class_classifier> class_cat_profile;
 typedef pair<string /* cat name */,
 	     class_cat_profile /* classifier of this cat */
 	     > class_cat_profile_list_entry;
 typedef vector<class_cat_profile_list_entry> class_cat_profile_list;
 
+#ifdef DONT_FOLLOW_ROI
+typedef unordered_map<class_sparse_vector *,
+		      unsigned int /* cache of |GS(d)| */> class_multicats_docs;
+typedef pair<pair<pair<class_cat_doc_list,
+		       class_multicats_docs>,
+		  unsigned int /* unique doc count (i.e., M) */>,
+	     class_cat_profile_list> class_W_construction_material;
+#else
 typedef pair<pair<class_cat_doc_list,
 		  unsigned int /* unique doc count (i.e., M) */>,
 	     class_cat_profile_list> class_W_construction_material;
+#endif
 
 typedef pair<class_unique_docs_for_estimating_Th,
 	     class_W_construction_material> class_data;
@@ -75,8 +90,18 @@ static inline unsigned int &unique_doc_count(class_data &data)
 }
 static inline class_cat_doc_list &cat_doc_list(class_data &data)
 {
+#ifdef DONT_FOLLOW_ROI
+  return data.second.first.first.first;
+#else
   return data.second.first.first;
+#endif
 }
+#ifdef DONT_FOLLOW_ROI
+static inline class_multicats_docs &multicats_docs_list(class_data &data)
+{
+  return data.second.first.first.second;
+}
+#endif
 static inline class_unique_docs_for_estimating_Th &unique_docs(class_data &data)
 {
   return data.first;
@@ -163,6 +188,10 @@ static inline void string_complete_fn(void)
 
     class_set_of_cats &doc_GS = GS_entry->second;
     D_ptr->second = &doc_GS;
+
+#ifdef DONT_FOLLOW_ROI
+    multicats_docs_list(LS)[&D_ptr->first] = doc_GS.size();
+#endif
 
     /* Step 4 */
     for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
@@ -283,6 +312,17 @@ static inline void construct_cat_profile_list(class_cat_profile_list &list,
     }
 }
 
+#ifdef DONT_FOLLOW_ROI
+/* For each cat profile in the cat profile list, find a set of docs that
+ * belongs to the cat profile in cat doc list, sum the w vectors of those
+ * documents registering the adjustment necessary for documents categorized into
+ * more than one category, and store the result in the cat profile for later
+ * construction of W vector.
+ */
+static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
+			      const class_cat_doc_list &cat_doc_list,
+			      const class_multicats_docs &multicats_docs)
+#else
 /* For each cat profile in the cat profile list, find a set of docs that
  * belongs to the cat profile in cat doc list, sum the w vectors of those
  * documents and store the result in the cat profile for later construction of
@@ -290,6 +330,7 @@ static inline void construct_cat_profile_list(class_cat_profile_list &list,
  */
 static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 			      const class_cat_doc_list &cat_doc_list)
+#endif
 {
   for (class_cat_profile_list::iterator i = cat_profile_list.begin();
        i != cat_profile_list.end();
@@ -302,7 +343,11 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
       if (e == cat_doc_list.end() || e->second.empty()) {
 
 	cat_W_construction.second = 0; // |C|
+#ifdef DONT_FOLLOW_ROI
+	cat_W_construction.first.first.clear(); // no doc, sum of w vectors is 0
+#else
 	cat_W_construction.first.clear(); // Has no doc, sum of w vectors is 0
+#endif
 	continue;
       }
 
@@ -313,7 +358,17 @@ static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
 	   j != cat_docs.end();
 	   j++)
 	{
+#ifdef DONT_FOLLOW_ROI
+	  add_sparse_vector(cat_W_construction.first.first, **j);
+
+	  class_multicats_docs::const_iterator d = multicats_docs.find(*j);
+	  if (d != multicats_docs.end()) {
+	    add_weighted_sparse_vector(cat_W_construction.first.second, **j,
+				       d->second - 1);
+	  }
+#else
 	  add_sparse_vector(cat_W_construction.first, **j);
+#endif
 	}
     }
 }
@@ -371,15 +426,12 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       unsigned int not_C_cardinality = unique_doc_count - C_cardinality;
 
       class_sparse_vector &W = cat_profile.second.second;
-      const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
 
       /* The first term. If C_cardinality == 0, sum_w_in_C should be all zeros
        * (i.e., the sparse vector is empty), and so, W should be empty too  */
       if (C_cardinality == 0) {
 	W.clear();
 	continue; // W is already all 0. There is no point to do subtraction.
-      } else {
-	assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
       }
 
       /* Adjusting P if P is < 0 */
@@ -388,10 +440,23 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
       }
       /* End of adjustment */
 
+#ifdef DONT_FOLLOW_ROI
+      const class_sparse_vector &sum_w_in_C = cat_profile.first.first.first;
+#else
+      const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
+#endif
+      assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
+
       /* The second term, the penalizing part. P is assumed to be >= 0.0 */
       if (fpclassify(P) != FP_ZERO && not_C_cardinality != 0)
 	{
 	  double multiplier = P / static_cast<double>(not_C_cardinality);
+
+#ifdef DONT_FOLLOW_ROI
+	  const class_sparse_vector &adjustment
+	    = cat_profile.first.first.second;
+	  add_weighted_sparse_vector(W, adjustment, multiplier);
+#endif
 
 	  for (class_cat_profile_list::const_iterator j
 		 = cat_profile_list.begin();
@@ -401,9 +466,13 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 	      if (i == j) {
 		continue;
 	      }
-	      
+#ifdef DONT_FOLLOW_ROI
+	      const class_sparse_vector &sum_w_not_in_C
+		= j->second.first.first.first;
+#else
 	      const class_sparse_vector &sum_w_not_in_C
 		= j->second.first.first;
+#endif
 
 	      for (class_sparse_vector::const_iterator k
 		     = sum_w_not_in_C.begin();
@@ -594,7 +663,12 @@ static inline void tune_parameter(unsigned int ES_index,
   construct_cat_profile_list(cat_profile_list(LS_min_ES),
 			     cat_doc_list(LS_min_ES));
 
+#ifdef DONT_FOLLOW_ROI
+  prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES),
+	     multicats_docs_list(LS_min_ES));
+#else
   prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
+#endif
 
   for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
     {
@@ -997,7 +1071,11 @@ MAIN_INPUT_START
 MAIN_INPUT_END /* All w vectors are stored in LS */
 
 construct_cat_profile_list(cat_profile_list(LS), cat_doc_list(LS));
+#ifdef DONT_FOLLOW_ROI
+prepare_Ws(cat_profile_list(LS), cat_doc_list(LS), multicats_docs_list(LS));
+#else
 prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
+#endif
 
 /* Parameter tuning */
 typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
