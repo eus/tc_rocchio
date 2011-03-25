@@ -148,16 +148,7 @@ break;
 MAIN_INPUT_START
 MAIN_LIST_OF_FILE_START
 {
-  /* Extract document name */
-  unsigned int pos = file_path->find_last_of(OS_PATH_DELIMITER);
-  if (pos == file_path->npos) {
-    // The path contains no leading directories
-    pos = 0;
-  } else {
-    pos++;
-  }
-  const string &doc_name = file_path->substr(pos);
-  /* Extract document name */
+  const string doc_name(get_file_name(file_path->c_str()));
 
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 

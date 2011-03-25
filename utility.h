@@ -23,6 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef THREADED
+#include <pthread.h>
+#endif
 
 #define FP_COMPARISON_DELTA 1e-15
 
@@ -104,40 +107,73 @@
 
 #define CLEANUP_END }
 
+#ifdef THREADED
+#define fatal_error_hdr() fprintf(stderr, "%s[%lu]: ",			\
+				  prog_name, (unsigned long) pthread_self())
+#else
 #define fatal_error_hdr() fprintf(stderr, "%s[%lu]: ",			\
 				  prog_name, (unsigned long) getpid())
+#endif
+
+#define verbose_msg(msg, ...)			\
+  do {						\
+    flockfile(stderr);				\
+    fatal_error_hdr();				\
+    fprintf(stderr, msg , ## __VA_ARGS__);	\
+    funlockfile(stderr);			\
+  } while (0)
 
 #define fatal_error(msg, ...)			\
   do {						\
+    flockfile(stderr);				\
     fatal_error_hdr();				\
     fprintf(stderr, msg "\n", ## __VA_ARGS__);	\
+    funlockfile(stderr);			\
     exit(EXIT_FAILURE);				\
   } while (0)
 
 #define print_error(msg, ...)					\
   do {								\
+    flockfile(stderr);						\
     fatal_error_hdr();						\
     fprintf(stderr, msg "\n", ## __VA_ARGS__);			\
+    funlockfile(stderr);					\
   } while (0)
 
 #define fatal_syserror(msg, ...)				\
   do {								\
     err_msg = strerror(errno);					\
+    flockfile(stderr);						\
     fatal_error_hdr();						\
     fprintf(stderr, msg " (%s)\n", ## __VA_ARGS__, err_msg);	\
+    funlockfile(stderr);					\
     exit(EXIT_FAILURE);						\
   } while (0)
 
 #define print_syserror(msg, ...)				\
   do {								\
     err_msg = strerror(errno);					\
+    flockfile(stderr);						\
     fatal_error_hdr();						\
     fprintf(stderr, msg " (%s)\n", ## __VA_ARGS__, err_msg);	\
+    funlockfile(stderr);					\
   } while (0)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Return a pointer to the file name part of the path. */
+static inline const char *get_file_name(const char *path)
+{
+  const char *pos = strrchr(path, OS_PATH_DELIMITER);
+  if (pos == NULL) {
+    // The path contains no leading directories
+    return path;
+  } else {
+    return pos + 1;
+  }
+}
 
 struct sparse_vector_entry {
   unsigned int offset;
@@ -168,6 +204,18 @@ static inline void recover_stdin(void)
   }
 }
 
+static inline void recover_stdout(void)
+{
+  if (out_stream != stdout) {
+    if (fclose(out_stream) != 0) {
+      fatal_syserror("Cannot close output %s", out_stream_name);
+    }
+
+    out_stream = stdout;
+    out_stream_name = NULL;
+  }
+}
+
 static inline void open_in_stream(const char *path)
 {
   if (in_stream != stdin) {
@@ -193,6 +241,23 @@ static inline void open_out_stream(const char *path)
   out_stream = fopen(out_stream_name, "w");
   if (out_stream == NULL) {
     fatal_syserror("Cannot open output %s for writing", out_stream_name);
+  }
+}
+
+static inline FILE *open_local_out_stream(const char *path)
+{
+  FILE *out_stream = fopen(path, "w");
+  if (out_stream == NULL) {
+    fatal_syserror("Cannot open output %s for writing", path);
+  }
+  return out_stream;
+}
+
+static inline void close_local_out_stream(FILE *local_out_stream,
+					  const char *local_out_stream_name)
+{
+  if (fclose(local_out_stream) != 0) {
+    fatal_syserror("Cannot close output %s", local_out_stream_name);
   }
 }
 
