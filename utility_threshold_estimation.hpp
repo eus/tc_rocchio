@@ -266,13 +266,15 @@ static inline void test_do_threshold_estimation(void)
 #endif /* NDEBUG of test_do_threshold_estimation() */
 
 /**
+ * It is a programming error if cat_doc_list does not contain target_cat_name.
+ *
  * @param unique_docs the docs used to estimate the threshold
- * @param unique_docs_in_target_cat is used to check for category emptiness
+ * @param cat_doc_list is used to check for category emptiness
  *
  * @return interpolated BEP associated with the estimated threshold
  */
 static inline double estimate_Th(class_unique_docs_for_estimating_Th unique_docs,
-				 const class_docs &unique_docs_in_target_cat,
+				 const class_cat_doc_list &cat_doc_list,
 				 const string &target_cat_name,
 				 class_classifier &target_cat_classifier)
 {
@@ -320,7 +322,9 @@ For the case where all bits are zero, Th should be a value that is larger than t
 If no bit exists like in Example 4, the threshold is 0.
 */
 
-  if (unique_docs_in_target_cat.empty()) {
+  class_cat_doc_list::const_iterator t = cat_doc_list.find(target_cat_name);
+
+  if (t == cat_doc_list.end() || t->second.empty()) {
     /* Cat has no doc.
      * This corresponds to the set of cases {0, 00, 000, ...}
      * So, the action mentioned in the above explanation in the case where all
@@ -408,7 +412,7 @@ static inline void test_estimate_Th(void)
   class_doc_cat_list gold_standard;
   class_w_cats_list all_docs;
   class_unique_docs_for_estimating_Th unique_docs;
-  class_docs unique_docs_in_target_cat;
+  class_cat_doc_list cat_doc_list;
   string target_cat_name("X");
   class_classifier target_cat_classifier;
   double deviation;
@@ -427,7 +431,7 @@ static inline void test_estimate_Th(void)
 
 #define __reset_test_case() do {		\
     gold_standard.clear();			\
-    unique_docs_in_target_cat.clear();		\
+    cat_doc_list.clear();			\
     unique_docs.clear();			\
     all_docs.clear();				\
     target_cat_classifier.first.threshold = 0;	\
@@ -436,7 +440,7 @@ static inline void test_estimate_Th(void)
 #define __do_test(expected_interpolated_BEP, expected_Th) do {		\
     /* Check interpolated BEP */					\
     deviation = (estimate_Th(unique_docs,				\
-			     unique_docs_in_target_cat,			\
+			     cat_doc_list,				\
 			     target_cat_name,				\
 			     target_cat_classifier)			\
 		 - (expected_interpolated_BEP));			\
@@ -457,7 +461,7 @@ static inline void test_estimate_Th(void)
 #define make_doc(cat_name, doc_name, first_w_entry) do {	\
     __make_doc(cat_name, doc_name, first_w_entry);		\
     class_w_cats &doc = all_docs.back();			\
-    unique_docs_in_target_cat.insert(&doc.first);		\
+    cat_doc_list[cat_name].insert(&doc.first);			\
     w_to_doc_name[&doc.first] = doc_name;			\
   } while (0)
 #define reset_test_case() do {			\
@@ -474,7 +478,7 @@ static inline void test_estimate_Th(void)
 #define make_doc(cat_name, doc_name, first_w_entry) do {	\
     __make_doc(cat_name, doc_name, first_w_entry);		\
     class_w_cats &doc = all_docs.back();			\
-    unique_docs_in_target_cat.push_back(&doc.first);	\
+    cat_doc_list[cat_name].push_back(&doc.first);		\
   } while (0)
 #define reset_test_case() do {			\
     __reset_test_case();			\
@@ -488,7 +492,7 @@ static inline void test_estimate_Th(void)
     all_docs.push_back(class_w_cats());		\
     class_w_cats &doc = all_docs.back();	\
     doc.second = NULL;				\
-    unique_docs_in_target_cat.clear();		\
+    cat_doc_list[cat_name];			\
   } while (0)
 
   /* 1) 1101001 can be divided into 1101 and 001 where b = c = 1 and a = 3 */
