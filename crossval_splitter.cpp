@@ -106,6 +106,8 @@ static inline void complete_fn(void)
 }
 /* End of reading input file */
 
+static unsigned int rseed_set = 0;
+static unsigned int rseed;
 static const char *file_training_doc_path = NULL;
 static const char *file_training_doc_cat_path = NULL;
 static const char *file_training_doc_cat_pm_path = NULL;
@@ -134,9 +136,9 @@ MAIN_BEGIN(
 "respectively. It is a fatal error if a document name cannot be found in the\n"
 "DOC_CAT_FILE. A string that does not correspond to any category name (e.g.,\n"
 "an empty string) can be specified using -X when no category should be\n"
-"excluded.\n",
-"P:X:D:1:2:3:4:5:6:",
-"-D DOC_CAT_FILE -P TESTSET_PERCENTAGE_OF_DOC\n"
+"excluded. The random seed must be specified using the mandatory option -S.\n",
+"S:P:X:D:1:2:3:4:5:6:",
+"-D DOC_CAT_FILE -P TESTSET_PERCENTAGE_OF_DOC -S RANDOM_SEED\n"
 "-X EXCLUDED_CAT_NAME\n"
 "-1 TRAINING_DOC_FILE -2 TRAINING_DOC_CAT_FILE\n"
 "-3 TRAINING_PERF_MEASURE_DOC_CAT_FILE\n"
@@ -159,6 +161,15 @@ case 'P': {
   }
   testset_percentage = static_cast<unsigned int>(num);
   testset_percentage_set = 1;
+}
+break;
+case 'S': {
+  long int num = (long int) strtoul(optarg, NULL, 10);
+  if (num < 0) {
+    fatal_error("RANDOM_SEED must be >= 0");
+  }
+  rseed = num;
+  rseed_set = 1;
 }
 break;
 case 'X': {
@@ -203,6 +214,9 @@ break;
   if (!testset_percentage_set) {
     fatal_error("-P must be specified (-h for help)");
   }
+  if (!rseed_set) {
+    fatal_error("-S must be specified (-h for help)");
+  }
   if (excluded_cat_name == NULL) {
     fatal_error("-X must be specified (-h for help)");
   }
@@ -224,6 +238,8 @@ break;
   if (file_testing_doc_cat_pm_path == NULL) {
     fatal_error("-6 must be specified (-h for help)");
   }
+
+  srand(rseed);
 }
 MAIN_INPUT_START
 
