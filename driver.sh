@@ -48,9 +48,10 @@ tuner_count=1
 custom_ES=
 validation_testset_percentage=
 skip_step_6=0
+crossval_rseed=1
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:D option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:DR: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -74,6 +75,7 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:D option; do
 	T) custom_ES=$OPTARG;;
 	V) validation_testset_percentage=$OPTARG;;
 	D) skip_step_6=1;;
+	R) crossval_rseed=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -95,6 +97,7 @@ Usage: $prog_name
        -T [CUSTOM_ES=]
        -V [VALIDATION_TESTING_SET_PERCENTAGE=]
        -D [SKIP_STEP_6=no]
+       -R [RANDOM_SEED_FOR_CROSS_VALIDATION_SPLIT=$crossval_rseed]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
 
@@ -102,7 +105,7 @@ Do not use any path name having shell special characters or whitespaces.
 The name of excluded category must not contain any shell special character or
     whitespace.
 
-For an arbitrary selection of random seed, specify -1 using -S.
+For an arbitrary selection of random seed, specify -1 to -S or -R.
 
 To build training and testing sets according to cross validation technique, specify -V, give the percentage of documents that should go to the testing set as the argument, and run Step 2. The percentage is a real number between 0 and 100, inclusive. This option works by replacing both Step 2 and Step $((testing_from_step + 1)) with a single step that builds DOC and DOC_CAT files for both training and testing phases following cross validation approach. Step $((testing_from_step + 1)) will automatically be run unless -D is specified.
 
@@ -239,6 +242,9 @@ fi
 if [ $ES_rseed -eq -1 ]; then
     ES_rseed=$RANDOM
 fi
+if [ $crossval_rseed -eq -1 ]; then
+    crossval_rseed=$RANDOM
+fi
 
 # Intermediate files of training phase
 file_idf_dic=$tmp_dir/idf_dic.bin
@@ -361,7 +367,7 @@ function step_1 {
 function step_2 {
     if [ -n "$validation_testset_percentage" ]; then
 	step_6
-	echo -n "2. [CROSS VALIDATION SETUP] Generating files... "
+	echo -n "2. [CROSS VALIDATION SETUP] Generating files... [rseed=$crossval_rseed]"
 	time (
 	    if [ -d $crossval_dir ]; then
 		rm -r $crossval_dir
@@ -390,6 +396,7 @@ function step_2 {
 		-D $file_doc_cat_crossval_all \
 		-P $validation_testset_percentage \
 		-X $excluded_cat \
+		-S $crossval_rseed \
 		-1 $file_doc_training \
 		-2 $file_doc_cat_training \
 		-3 $file_doc_cat_perf_measure_training \
