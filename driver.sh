@@ -46,9 +46,10 @@ BEP_history_filter=
 use_stop_list=0
 tuner_count=1
 custom_ES=
+validation_testset_percentage=
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T: option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -70,6 +71,7 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T: option; do
 	f) file_stop_list=$OPTARG;;
 	J) tuner_count=$OPTARG;;
 	T) custom_ES=$OPTARG;;
+	V) validation_testset_percentage=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -89,6 +91,7 @@ Usage: $prog_name
        -f [STOP_LIST_FILE=EXEC_DIR/english.stop]
        -J [PARAMETER_TUNING_THREAD_COUNT=1]
        -T [CUSTOM_ES=]
+       -V [VALIDATION_TESTING_SET_PERCENTAGE=]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
 
@@ -98,11 +101,14 @@ The name of excluded category must not contain any shell special character or
 
 For an arbitrary selection of random seed, specify -1 using -S.
 
+To build training and testing sets according to cross validation technique, specify -V, give the percentage of documents that should go to the testing set as the argument, and run Step 2. The percentage is a real number between 0 and 100, inclusive. This option works by replacing both Step 2 and Step $((testing_from_step + 1)) with a single step that builds DOC and DOC_CAT files for both training and testing phases following cross validation approach. Step $((testing_from_step + 1)) will automatically be run. 
+
 Available steps:
     0.  Constructing temporary directory structure
     [TRAINING PHASE]
     1. Tokenization, filtering stopped words if desired, and TF calculation
-    2. DOC and DOC_CAT files generation
+    2. DOC and DOC_CAT files generation, or if -V is specified, DOC and DOC_CAT
+       files generation for both the training and testing phases
     3. IDF calculation and DIC building
     4. w vectors generation
     5. Parametrized Rocchio Classifiers (PRCs) generation
@@ -125,7 +131,8 @@ Available steps:
       has been completed.
     [TESTING PHASE]
     $((testing_from_step + 0)). Tokenization, filtering stopped words if desired, and TF calculation
-    $((testing_from_step + 1)). DOC and DOC_CAT files generation
+    $((testing_from_step + 1)). DOC and DOC_CAT files generation, or if -V is specified,
+       this step is skipped
     $((testing_from_step + 2)). w vectors generation
     $((testing_from_step + 3)). OVA (One-vs-All) classification of test set
     - Dot product between a document and all binary classifiers are performed.
@@ -212,10 +219,16 @@ if [ \! -x $perf_measurer ]; then
     echo "perf_measurer does not exist or is not executable" >&2
     exit 1
 fi
+cross_validation_splitter=$exec_dir/crossval_splitter
+if [ \! -x $perf_measurer ]; then
+    echo "crossval_splitter does not exist or is not executable" >&2
+    exit 1
+fi
 # End of executable files
 
 tmp_training_dir=$tmp_dir/training
 tmp_testing_dir=$tmp_dir/testing
+crossval_dir=$tmp_dir/crossval
 
 if [ $use_stop_list -eq 1 -a -z "$file_stop_list" ]; then
     file_stop_list=$exec_dir/english.stop
@@ -240,6 +253,10 @@ file_doc_testing=$tmp_dir/testing_set_doc.txt
 file_classification=$tmp_dir/classification.txt
 file_perf_measure=$tmp_dir/perf_measure.txt
 # End of intermediate files of testing
+
+# Intermediate files of cross validation setup
+file_doc_cat_crossval_all=$tmp_dir/crossval_all_doc_cat.txt
+# End of cross validation setup
 
 # Intermediate files of the extra steps
 file_classification_training=$tmp_dir/classification_on_training_set.txt
@@ -334,12 +351,48 @@ function step_1 {
 }
 
 function step_2 {
-    echo -n "2. [TRAINING] DOC and DOC_CAT files generation..."
-    time (DOC_and_DOC_CAT_files_generation $training_dir $tmp_training_dir \
-	$file_doc_training $file_doc_cat_training \
-	&& perf_measure_DOC_CAT_files_generation $training_dir \
-	   $file_doc_cat_perf_measure_training) \
-	|| exit 1
+    if [ -n "$validation_testset_percentage" ]; then
+	step_6
+	echo -n "2. [CROSS VALIDATION SETUP] Generating files... "
+	time (
+	    if [ -d $crossval_dir ]; then
+		rm -r $crossval_dir
+	    fi
+	    mkdir $crossval_dir
+
+# 1. Create a uniquely sorted DOC_CAT file from both training and testing sets.
+	    perf_measure_DOC_CAT_files_generation $training_dir \
+		$file_doc_cat_perf_measure_training
+	    perf_measure_DOC_CAT_files_generation $testing_dir \
+		$file_doc_cat_perf_measure
+	    cat $file_doc_cat_perf_measure_training $file_doc_cat_perf_measure \
+		| sort -u > $file_doc_cat_crossval_all
+
+# 2. Copy documents from both training and testing sets into one directory.
+#    This kills all duplicated docs.
+	    find $tmp_training_dir $tmp_testing_dir -maxdepth 1 -type f \
+		-exec cp -u -- '{}' $crossval_dir ';'
+
+# 3. Iterate the copied files at each of which do a pseudorandom decision whether to put the document in testing DOC file or training DOC file. When a document is put in testing DOC file, grep the DOC_CAT file previously created for the document name and store the result in testing DOC_CAT file. This is also the case when putting a document in training DOC file.
+	    find $crossval_dir -type f | $cross_validation_splitter \
+		-D $file_doc_cat_crossval_all \
+		-P $validation_testset_percentage \
+		-X $excluded_cat \
+		-1 $file_doc_training \
+		-2 $file_doc_cat_training \
+		-3 $file_doc_cat_perf_measure_training \
+		-4 $file_doc_testing \
+		-5 $file_doc_cat_testing \
+		-6 $file_doc_cat_perf_measure
+	)
+    else
+	echo -n "2. [TRAINING] DOC and DOC_CAT files generation..."
+	time (DOC_and_DOC_CAT_files_generation $training_dir $tmp_training_dir \
+	    $file_doc_training $file_doc_cat_training \
+	    && perf_measure_DOC_CAT_files_generation $training_dir \
+	    $file_doc_cat_perf_measure_training) \
+	    || exit 1
+    fi
 }
 
 function step_3 {
@@ -355,47 +408,58 @@ function step_4 {
 }
 
 function step_5 {
-    echo -n "5. [TRAINING] PRCs generation [seed=$ES_rseed]..."
-    time (if [ -z "$custom_ES" ]; then
+    if [ -z "$custom_ES" ]; then
 	if [ -z "$BEP_history_script" ]; then
-	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
-	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
-	    -J $tuner_count $file_w_vectors_training
+	    echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=no,seed=$ES_rseed]..."
+	    time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		-M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		-o $file_W_vectors -J $tuner_count $file_w_vectors_training) \
+		|| exit 1
 	else
 	    if [ -z "$BEP_history_filter" ]; then
-		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=yes-nofilter,seed=$ES_rseed]..."
+		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
-		    -J $tuner_count $file_w_vectors_training
+		    -J $tuner_count $file_w_vectors_training) \
+		    || exit 1
 	    else
-		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=yes-filtered,seed=$ES_rseed]..."
+		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
 		    -F $BEP_history_filter -J $tuner_count \
-		    $file_w_vectors_training
+		    $file_w_vectors_training) \
+		    || exit 1
 	    fi
 	fi
     else
 	if [ -z "$BEP_history_script" ]; then
-	$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc -M $p_max \
-	    -E $ES_count -P $ES_percentage -S $ES_rseed -o $file_W_vectors \
-	    -J $tuner_count -T $custom_ES $file_w_vectors_training
+	    echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=no,seed=$ES_rseed]..."
+	    time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		-M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
+		-o $file_W_vectors -J $tuner_count -T $custom_ES \
+		$file_w_vectors_training) \
+		|| exit 1
 	else
 	    if [ -z "$BEP_history_filter" ]; then
-		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=yes-nofilter,seed=$ES_rseed]..."
+		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
-		    -J $tuner_count -T $custom_ES $file_w_vectors_training
+		    -J $tuner_count -T $custom_ES $file_w_vectors_training) \
+		    || exit 1
 	    else
-		$rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
+		echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=yes-filtered,seed=$ES_rseed]..."
+		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
 		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
 		    -o $file_W_vectors -H $BEP_history_script \
 		    -F $BEP_history_filter -J $tuner_count -T $custom_ES \
-		    $file_w_vectors_training
+		    $file_w_vectors_training) \
+		    || exit 1
 	    fi
 	fi
-    fi) \
-	    || exit 1
+    fi
 }
 
 function step_6 {
@@ -406,11 +470,15 @@ function step_6 {
 
 function step_7 {
     echo -n "7. [TESTING] DOC and DOC_CAT files generation..."
-    time (DOC_and_DOC_CAT_files_generation $testing_dir $tmp_testing_dir \
-	$file_doc_testing $file_doc_cat_testing \
-	&& perf_measure_DOC_CAT_files_generation $testing_dir \
-	   $file_doc_cat_perf_measure) \
-	|| exit 1
+    if [ -n "$validation_testset_percentage" ]; then
+	echo " [Using cross-validation DOC and DOC_CAT files]"
+    else
+	time (DOC_and_DOC_CAT_files_generation $testing_dir $tmp_testing_dir \
+	    $file_doc_testing $file_doc_cat_testing \
+	    && perf_measure_DOC_CAT_files_generation $testing_dir \
+	    $file_doc_cat_perf_measure) \
+	    || exit 1
+    fi
 }
 
 function step_8 {
@@ -455,6 +523,11 @@ function step_12 {
 not_timing_line='/\\\[.*at CPU usage.*\\\]$/!'
     timing_line='/\\\[.*at CPU usage.*\\\]$/' # same as before but no `!'
 for ((i = $from_step; i <= $to_step; i++)); do
+
+    if [ -n "$validation_testset_percentage" -a $i -eq 6 ]; then
+	continue
+    fi
+
     eval `step_$i \
 	2>&1 \
 	| sed \
