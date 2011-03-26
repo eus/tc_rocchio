@@ -47,9 +47,10 @@ use_stop_list=0
 tuner_count=1
 custom_ES=
 validation_testset_percentage=
+skip_step_6=0
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V: option; do
+while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:D option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -72,6 +73,7 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V: option; do
 	J) tuner_count=$OPTARG;;
 	T) custom_ES=$OPTARG;;
 	V) validation_testset_percentage=$OPTARG;;
+	D) skip_step_6=1;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
@@ -92,6 +94,7 @@ Usage: $prog_name
        -J [PARAMETER_TUNING_THREAD_COUNT=1]
        -T [CUSTOM_ES=]
        -V [VALIDATION_TESTING_SET_PERCENTAGE=]
+       -D [SKIP_STEP_6=no]
        -a [EXECUTE_FROM_STEP_A=$from_step]
        -b [EXECUTE_TO_STEP_B=$to_step]
 
@@ -101,7 +104,7 @@ The name of excluded category must not contain any shell special character or
 
 For an arbitrary selection of random seed, specify -1 using -S.
 
-To build training and testing sets according to cross validation technique, specify -V, give the percentage of documents that should go to the testing set as the argument, and run Step 2. The percentage is a real number between 0 and 100, inclusive. This option works by replacing both Step 2 and Step $((testing_from_step + 1)) with a single step that builds DOC and DOC_CAT files for both training and testing phases following cross validation approach. Step $((testing_from_step + 1)) will automatically be run. 
+To build training and testing sets according to cross validation technique, specify -V, give the percentage of documents that should go to the testing set as the argument, and run Step 2. The percentage is a real number between 0 and 100, inclusive. This option works by replacing both Step 2 and Step $((testing_from_step + 1)) with a single step that builds DOC and DOC_CAT files for both training and testing phases following cross validation approach. Step $((testing_from_step + 1)) will automatically be run unless -D is specified.
 
 Available steps:
     0.  Constructing temporary directory structure
@@ -274,7 +277,12 @@ function create_dir_struct {
     mkdir -p $repo_dir
 
     # This will kill all docs assigned to multiple categories
-    cp -u -- $1/*/* $repo_dir
+    curr_dir="$(pwd)"
+    for dir in $1/*; do
+	cd "$dir"
+	find . -type f -print0 | cpio -up0 --quiet $repo_dir
+    done
+    cd "$curr_dir"
 }
 
 # $1 is the directory produced by function create_dir_struct
@@ -370,8 +378,12 @@ function step_2 {
 
 # 2. Copy documents from both training and testing sets into one directory.
 #    This kills all duplicated docs.
-	    find $tmp_training_dir $tmp_testing_dir -maxdepth 1 -type f \
-		-exec cp -u -- '{}' $crossval_dir ';'
+	    curr_dir="$(pwd)"
+	    cd $tmp_training_dir
+	    find . -maxdepth 1 -type f -print0 | cpio -0up --quiet $crossval_dir
+	    cd $tmp_testing_dir
+	    find . -maxdepth 1 -type f -print0 | cpio -0up --quiet $crossval_dir
+	    cd "$curr_dir"
 
 # 3. Iterate the copied files at each of which do a pseudorandom decision whether to put the document in testing DOC file or training DOC file. When a document is put in testing DOC file, grep the DOC_CAT file previously created for the document name and store the result in testing DOC_CAT file. This is also the case when putting a document in training DOC file.
 	    find $crossval_dir -type f | $cross_validation_splitter \
@@ -463,9 +475,11 @@ function step_5 {
 }
 
 function step_6 {
-    echo -n "6. [TESTING] Tokenization and TF calculation..."
-    time (tokenization_and_tf_calculation $tmp_testing_dir) \
-	|| exit 1
+    if [ $skip_step_6 -ne 1 ]; then
+	echo -n "6. [TESTING] Tokenization and TF calculation..."
+	time (tokenization_and_tf_calculation $tmp_testing_dir) \
+	    || exit 1
+    fi
 }
 
 function step_7 {
