@@ -330,15 +330,15 @@ function get_doc_cat {
 # $4 is the resulting DOC_CAT file containing docs across all cats other than
 #       the excluded cat
 function DOC_and_DOC_CAT_files_generation {
-    find $2 -maxdepth 1 -type f > $3
-    find $1 -mindepth 2 -type f -printf '%P\n' | get_doc_cat \
+    find $2/ -maxdepth 1 -type f > $3
+    find $1/ -mindepth 2 -type f -printf '%P\n' | get_doc_cat \
 	| grep -v $excluded_cat\$ > $4
 }
 
 # $1 is the corpus training/testing directory
 # $2 is the resulting DOC_CAT file containing docs across all cats.
 function perf_measure_DOC_CAT_files_generation {
-    find $1 -mindepth 2 -type f -printf '%P\n' | get_doc_cat > $2
+    find $1/ -mindepth 2 -type f -printf '%P\n' | get_doc_cat > $2
 }
 
 # $1 is the DOC file
@@ -392,7 +392,7 @@ function step_2 {
 	    cd "$curr_dir"
 
 # 3. Iterate the copied files at each of which do a pseudorandom decision whether to put the document in testing DOC file or training DOC file. When a document is put in testing DOC file, grep the DOC_CAT file previously created for the document name and store the result in testing DOC_CAT file. This is also the case when putting a document in training DOC file.
-	    find $crossval_dir -type f | $cross_validation_splitter \
+	    find $crossval_dir/ -type f | $cross_validation_splitter \
 		-D $file_doc_cat_crossval_all \
 		-P $validation_testset_percentage \
 		-X $excluded_cat \
