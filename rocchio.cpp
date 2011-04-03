@@ -669,7 +669,7 @@ static inline void tune_parameter(unsigned int ES_index,
 #ifdef DONT_FOLLOW_ROI
 	  unsigned int GS_cardinality = GS.size();
 	  if (GS_cardinality > 1) {
-	    multicats_docs_list(LS_min_ES)[&D_ptr->first] = GS_cardinality - 1;
+	    multicats_docs_list(LS_min_ES)[&j->first] = GS_cardinality - 1;
 	  }
 #endif
 	  for (class_set_of_cats::const_iterator k = GS.begin();
