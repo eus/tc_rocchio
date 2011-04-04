@@ -23,6 +23,26 @@
 #include <list>
 #include "utility.h"
 
+#define foreach(type, container, itr)		\
+  for (type::iterator itr = container.begin();	\
+       itr != container.end();			\
+       itr++)
+
+#define const_foreach(type, container, itr)		\
+  for (type::const_iterator itr = container.begin();	\
+       itr != container.end();				\
+       itr++)
+
+#define foreach_r(type, container, itr)			\
+  for (type::reverse_iterator itr = container.rbegin();	\
+       itr != container.rend();				\
+       itr++)
+
+#define const_foreach_r(type, container, itr)			\
+  for (type::const_reverse_iterator itr = container.rbegin();	\
+       itr != container.rend();					\
+       itr++)
+
 #define MAIN_LIST_OF_FILE_START						\
   tokenizer("\n", buffer, BUFFER_SIZE, partial_fn_file, complete_fn_file); \
   for (class_input_file_paths::iterator file_path = input_file_paths.begin(); \
