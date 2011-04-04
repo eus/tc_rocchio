@@ -1333,6 +1333,21 @@ if (ES_count > 0) {
 		  best_P_per_cat_sum[i->first], i->second.second.first.P_avg);
 #endif
     }
+} else {
+#ifdef BE_VERBOSE
+  verbose_msg("No ES, setting all classifiers P to INIT_VALUE_OF_P (%f)\n",
+	      tuning_init);
+#endif
+  for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+       i != cat_profile_list(LS).end();
+       i++)
+    {
+      if (i->first.empty()) { // Don't consider excluded categories
+	continue;
+      }
+
+      i->second.second.first.P_avg = tuning_init;
+    }
 }
 
 construct_Ws(cat_profile_list(LS), unique_doc_count(LS),
