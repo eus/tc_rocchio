@@ -50,6 +50,10 @@ CLEANUP_BEGIN
 } CLEANUP_END
 
 static class_w_cats_list all_unique_docs; /* Contains all w in the input */
+static class_w_cats_list Th_estimation_docs; /* Contains all w in
+					      * W_VECTORS_SET_FOR_TH_ESTIMATION
+					      * file
+					      */
 
 #ifdef DONT_FOLLOW_ROI
 typedef pair<pair<class_sparse_vector /* sum of w in C */,
@@ -109,11 +113,12 @@ static inline class_cat_profile_list &cat_profile_list(class_data &data)
 }
 
 static class_doc_cat_list gold_standard;
-static class_data LS; /* All w in the input are cached here for final Th
-		       * estimation and all category partial profiles are
-		       * stored here to calculate the final profile vectors once
-		       * the corresponding P_avg has been decided.
+static class_data LS; /* All w in the input are cached here for constructing
+		       * the classifiers
 		       */
+static class_data Th_estimation_set; /* All w in W_VECTORS_SET_FOR_TH_ESTIMATION
+				      * are cached here for Th estimation
+				      */
 static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
 {
   if (doc_name.empty()) {
@@ -131,10 +136,15 @@ static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
   }
 }
 
+static unsigned int Th_vector_size;
 static unsigned int vector_size;
 static inline void vector_size_fn(unsigned int size)
 {
   vector_size = size;
+  if (vector_size != Th_vector_size) {
+    fatal_error("Size of w vectors in input (%u) != in Th estimation set (%u)",
+		vector_size, Th_vector_size);
+  }
 }
 
 static string word;
@@ -219,6 +229,70 @@ static inline void double_fn(unsigned int index, double value)
 }
 
 static inline void end_of_vector_fn(void)
+{
+}
+
+static inline void Th_vector_size_fn(unsigned int size)
+{
+  Th_vector_size = size;
+}
+
+static inline void Th_string_partial_fn(char *str)
+{
+  word.append(str);
+}
+
+static inline void Th_string_complete_fn(void)
+{
+  /* 1. Push an entry D into Th_estimation_docs.
+   * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in
+   *    Th_estimation_set.
+   * 3. Set the gold standard of D based on the DOC_CAT file while
+   *    incrementing variable unique_doc_count of Th_estimation_set.
+   */
+
+  /* Step 1 */
+  Th_estimation_docs.push_back(class_w_cats());
+  /* Step 1 completed */
+
+  /* Step 2 */
+  D_ptr = &Th_estimation_docs.back();
+  unique_docs(Th_estimation_set).push_back(D_ptr);
+  /* Step 2 completed */
+
+  /* Step 3 */
+#ifdef BE_VERBOSE
+  w_to_doc_name[&D_ptr->first] = word;
+#endif
+
+  unique_doc_count(Th_estimation_set)++;
+
+  class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
+  if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
+
+    D_ptr->second = NULL;
+
+  } else {
+
+    class_set_of_cats &doc_GS = GS_entry->second;
+    D_ptr->second = &doc_GS;
+
+  }
+  /* Step 3 completed */
+
+  word.clear();
+}
+
+static inline void Th_offset_count_fn(unsigned int count)
+{
+}
+
+static inline void Th_double_fn(unsigned int index, double value)
+{
+  D_ptr->first[index] = value;
+}
+
+static inline void Th_end_of_vector_fn(void)
 {
 }
 
@@ -505,6 +579,7 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
 }
 
 static double tuning_init = -1;
+static const char *Th_estimation_file = NULL;
 MAIN_BEGIN(
 "rocchio",
 "If input file is not given, stdin is read for input. Otherwise, the input\n"
@@ -550,7 +625,8 @@ MAIN_BEGIN(
 "~C is the set of documents not having category C, and"
 "P is the tuning parameter.\n"
 "Then, to estimate the threshold (Th) of the profile vector W,\n"
-"this processing unit will calculate the dot product of the document weight\n"
+"for each w vector in the file specified by the mandatory option -U, this\n"
+"processing unit will calculate the dot product of the document weight\n"
 "vector w with the profile vector W.\n"
 "The values of the dot products are sorted in descending order as follows:\n"
 "v_1 ... v_k where v_i is the value of some dot products (i.e., some dot\n"
@@ -594,8 +670,8 @@ MAIN_BEGIN(
 "third entry with N+2 as its offset.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, stdout is used to output binary data.\n",
-"D:B:",
-"-D DOC_CAT_FILE -B VALUE_OF_P\n",
+"D:B:U:",
+"-D DOC_CAT_FILE -B VALUE_OF_P -U W_VECTORS_SET_FOR_TH_ESTIMATION\n",
 0,
 case 'D':
 /* Allocating tokenizing buffer */
@@ -617,12 +693,24 @@ if (!isfinite(tuning_init)) {
 }
 break;
 
+case 'U':
+Th_estimation_file = optarg;
+break;
+
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
   if (tuning_init < 0) {
     fatal_error("-B must be specified (-h for help)");
+  }
+  if (Th_estimation_file == NULL) {
+    fatal_error("-U must be specified (-h for help)");
+  } else {
+    open_in_stream(Th_estimation_file);
+    parse_vector(buffer, BUFFER_SIZE, Th_vector_size_fn, Th_string_partial_fn,
+		 Th_string_complete_fn, Th_offset_count_fn, Th_double_fn,
+		 Th_end_of_vector_fn);
   }
 }
 
@@ -671,7 +759,7 @@ for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
 
     class_classifier &cat_classifier = i->second.second;
     class_W_property &prop = cat_classifier.first;
-    prop.BEP = estimate_Th(unique_docs(LS), cat_doc_list(LS),
+    prop.BEP = estimate_Th(unique_docs(Th_estimation_set), cat_doc_list(LS),
 			   i->first, i->second.second);
   }
 

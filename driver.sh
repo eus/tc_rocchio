@@ -388,6 +388,7 @@ function step_4 {
 function step_5 {
     echo -n "5. [TRAINING] PRCs generation..."
     time ($rocchio -D $file_doc_cat_training -B $p_init \
+	-U $file_w_vectors_training \
 	-o $file_W_vectors $file_w_vectors_training) \
 	|| exit 1
 }
