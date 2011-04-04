@@ -577,6 +577,7 @@ static inline void output_BEP_history(FILE *out_stream,
 	  "ylabel('BEP')\n");
 }
 
+typedef vector<double> class_rand_nums;
 typedef unordered_map<string /* cat name */, double> class_best_P_per_cat;
 static inline void tune_parameter(unsigned int ES_index,
 				  unsigned int ES_percentage,
@@ -589,6 +590,7 @@ static inline void tune_parameter(unsigned int ES_index,
 				  int BEP_h_filter_inverted,
 				  /* const */class_w_cats_list &all_unique_docs,
 				  /* const */class_data *ES_file_data,
+				  const class_rand_nums &serialized_rand,
 				  class_best_P_per_cat &best_P_per_cat)
 {
 #ifdef BE_VERBOSE
@@ -607,12 +609,13 @@ static inline void tune_parameter(unsigned int ES_index,
   }
 
   /* Construct ES and LS-ES*/
+  unsigned int rand_idx = 0;
   for (class_w_cats_list::iterator j = all_unique_docs.begin();
        j != all_unique_docs.end();
        j++)
     {
       bool in_ES = ((ES_file_data == NULL)
-		    && ((uniform_deviate(rand()) * PERCENTAGE_MULTIPLIER)
+		    && ((serialized_rand[rand_idx++] * PERCENTAGE_MULTIPLIER)
 			< ES_percentage));
       bool in_excluded_categories = (j->second == NULL);
 
@@ -788,6 +791,7 @@ public:
   int BEP_history_filter_inverted;
   /* const */class_w_cats_list *all_unique_docs;
   class_best_P_per_cat best_P_per_cat;
+  class_rand_nums rand_nums;
   class_data *ES_file_data;
   int tuner_exit_status;
 
@@ -805,12 +809,6 @@ public:
     this->all_unique_docs = &::all_unique_docs;
     this->ES_file_data = NULL;
     this->tuner_exit_status = EXIT_SUCCESS;
-  }
-  parameter_tuner_args(unsigned int ES_index, class_data *ES_file_data)
-  {
-    parameter_tuner_args();
-    this->ES_index = ES_index;
-    this->ES_file_data = ES_file_data;
   }
 };
 static void *run_parameter_tuner(void *args)
@@ -835,10 +833,18 @@ static void *run_parameter_tuner(void *args)
 		 data->tuning_init, data->tuning_max, data->tuning_inc,
 		 data->BEP_history_file,
 		 *data->BEP_history_filter, data->BEP_history_filter_inverted,
-		 *data->all_unique_docs, data->ES_file_data,
+		 *data->all_unique_docs, data->ES_file_data, data->rand_nums,
 		 data->best_P_per_cat);
 
   return &data->tuner_exit_status;
+}
+
+static inline void initialize_rand_nums(class_rand_nums &rand_nums,
+					unsigned int amount)
+{
+  for (unsigned int i = 0; i < amount; i++) {
+    rand_nums.push_back(uniform_deviate(rand()));
+  }
 }
 
 typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
@@ -860,10 +866,13 @@ static inline void parameter_tuning(unsigned int ES_count,
 	  break;
 	}
 
-	args_per_tuner_list[ES_index].ES_index = ES_index;
-	args_per_tuner_list[ES_index].ES_file_data = ES_file_data;
-	if (pthread_create(&*tuner, NULL, run_parameter_tuner,
-			   &args_per_tuner_list[ES_index]) != 0) {
+	class parameter_tuner_args &tuner_args = args_per_tuner_list[ES_index];
+	tuner_args.ES_index = ES_index;
+	tuner_args.ES_file_data = ES_file_data;
+	initialize_rand_nums(tuner_args.rand_nums,
+			     tuner_args.all_unique_docs->size());
+	if (pthread_create(&*tuner, NULL, run_parameter_tuner, &tuner_args)
+	    != 0) {
 	  fatal_syserror("Cannot create tuner thread at ES_index = %u",
 			 ES_index);
 	}
