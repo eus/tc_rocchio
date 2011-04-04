@@ -35,23 +35,14 @@ file_w_vectors_testing_name=testing_set_w_vectors.bin
 from_step=0
 to_step=12
 p_init=0
-p_inc=1
-p_max=30
-ES_count=20
-ES_percentage=30
-ES_rseed=1
 excluded_cat=unknown
-BEP_history_script=
-BEP_history_filter=
 use_stop_list=0
-tuner_count=1
-custom_ES=
 validation_testset_percentage=
 skip_step_6=0
 crossval_rseed=1
 # End of default values
 
-while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:DR: option; do
+while getopts hX:t:s:r:x:a:b:B:f:lV:DR: option; do
     case $option in
 	X) excluded_cat=$OPTARG;;
 	t) training_dir=$OPTARG;;
@@ -62,39 +53,21 @@ while getopts hX:t:s:r:x:a:b:B:I:M:E:P:S:H:F:f:lJ:T:V:DR: option; do
 	a) from_step=$OPTARG;;
 	b) to_step=$OPTARG;;
 	B) p_init=$OPTARG;;
-	I) p_inc=$OPTARG;;
-	M) p_max=$OPTARG;;
-	E) ES_count=$OPTARG;;
-	P) ES_percentage=$OPTARG;;
-	S) ES_rseed=$OPTARG;;
-	H) BEP_history_script=$OPTARG;;
-	F) BEP_history_filter=$OPTARG;;
 	l) use_stop_list=1;;
 	f) file_stop_list=$OPTARG;;
-	J) tuner_count=$OPTARG;;
-	T) custom_ES=$OPTARG;;
 	V) validation_testset_percentage=$OPTARG;;
 	D) skip_step_6=1;;
 	R) crossval_rseed=$OPTARG;;
 	h|?) cat >&2 <<EOF
 Usage: $prog_name
        -B [INITIAL_VALUE_OF_P=$p_init]
-       -I [INCREMENT_OF_P=$p_inc]
-       -M [MAXIMUM_VALUE_OF_P=$p_max]
-       -E [NUMBER_OF_ESTIMATION_SETS=$ES_count]
-       -P [PERCENTAGE_OF_DOCS_IN_ES=$ES_percentage]
-       -S [RANDOM_SEED_FOR_ES_GENERATION=$ES_rseed]
        -t TRAINING_DIR
        -s TESTING_DIR
        -r TEMP_DIR
        -x EXEC_DIR
        -X [EXCLUDED_CATEGORY=unknown]
-       -H [BEP_HISTORY_FILE]
-       -F [BEP_HISTORY_FILTER]
        -l [ENABLE_STOP_LIST=no]
        -f [STOP_LIST_FILE=EXEC_DIR/english.stop]
-       -J [PARAMETER_TUNING_THREAD_COUNT=1]
-       -T [CUSTOM_ES=]
        -V [VALIDATION_TESTING_SET_PERCENTAGE=]
        -D [SKIP_STEP_6=no]
        -R [RANDOM_SEED_FOR_CROSS_VALIDATION_SPLIT=$crossval_rseed]
@@ -105,7 +78,7 @@ Do not use any path name having shell special characters or whitespaces.
 The name of excluded category must not contain any shell special character or
     whitespace.
 
-For an arbitrary selection of random seed, specify -1 to -S or -R.
+For an arbitrary selection of random seed, specify -1 to -R.
 
 To build training and testing sets according to cross validation technique, specify -V, give the percentage of documents that should go to the testing set as the argument, and run Step 2. The percentage is a real number between 0 and 100, inclusive. This option works by replacing both Step 2 and Step $((testing_from_step + 1)) with a single step that builds DOC and DOC_CAT files for both training and testing phases following cross validation approach. Step $((testing_from_step + 1)) will automatically be run unless -D is specified.
 
@@ -124,17 +97,6 @@ Available steps:
       w vector is classified into C.
     - While the W vector is obtained using parametrized Rocchio formula, the
       threshold is obtained through estimation using interpolated BEP.
-    - The options -H and -F can be used to generate a GNU Octave
-      (Matlab-compatible) script to plot the various BEP values of the
-      categories during parameter tuning. This can be used to see that
-      parameter tuning process corresponds to feature selection process because
-      the BEP plots are convex curves.
-    - The option -T can be used to specify a custom ES. For example, to do
-      parameter tuning on the whole training set instead of a random subset of
-      the training set, TEMP_DIR/$file_w_vectors_name can be specified after
-      Step 4 has been completed. To do parameter tuning on the whole test set,
-      TEMP_DIR/$file_w_vectors_testing_name can be specified after Step $((testing_from_step + 2))
-      has been completed.
     [TESTING PHASE]
     $((testing_from_step + 0)). Tokenization, filtering stopped words if desired, and TF calculation
     $((testing_from_step + 1)). DOC and DOC_CAT files generation, or if -V is specified,
@@ -238,9 +200,6 @@ crossval_dir=$tmp_dir/crossval
 
 if [ $use_stop_list -eq 1 -a -z "$file_stop_list" ]; then
     file_stop_list=$exec_dir/english.stop
-fi
-if [ $ES_rseed -eq -1 ]; then
-    ES_rseed=$RANDOM
 fi
 if [ $crossval_rseed -eq -1 ]; then
     crossval_rseed=$RANDOM
@@ -427,58 +386,10 @@ function step_4 {
 }
 
 function step_5 {
-    if [ -z "$custom_ES" ]; then
-	if [ -z "$BEP_history_script" ]; then
-	    echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=no,seed=$ES_rseed]..."
-	    time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		-M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		-o $file_W_vectors -J $tuner_count $file_w_vectors_training) \
-		|| exit 1
-	else
-	    if [ -z "$BEP_history_filter" ]; then
-		echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=yes-nofilter,seed=$ES_rseed]..."
-		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		    -o $file_W_vectors -H $BEP_history_script \
-		    -J $tuner_count $file_w_vectors_training) \
-		    || exit 1
-	    else
-		echo -n "5. [TRAINING] PRCs generation [custom_ES=no,BEP_h_script=yes-filtered,seed=$ES_rseed]..."
-		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		    -o $file_W_vectors -H $BEP_history_script \
-		    -F $BEP_history_filter -J $tuner_count \
-		    $file_w_vectors_training) \
-		    || exit 1
-	    fi
-	fi
-    else
-	if [ -z "$BEP_history_script" ]; then
-	    echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=no,seed=$ES_rseed]..."
-	    time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		-M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		-o $file_W_vectors -J $tuner_count -T $custom_ES \
-		$file_w_vectors_training) \
-		|| exit 1
-	else
-	    if [ -z "$BEP_history_filter" ]; then
-		echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=yes-nofilter,seed=$ES_rseed]..."
-		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		    -o $file_W_vectors -H $BEP_history_script \
-		    -J $tuner_count -T $custom_ES $file_w_vectors_training) \
-		    || exit 1
-	    else
-		echo -n "5. [TRAINING] PRCs generation [custom_ES=yes,BEP_h_script=yes-filtered,seed=$ES_rseed]..."
-		time ($rocchio -D $file_doc_cat_training -B $p_init -I $p_inc \
-		    -M $p_max -E $ES_count -P $ES_percentage -S $ES_rseed \
-		    -o $file_W_vectors -H $BEP_history_script \
-		    -F $BEP_history_filter -J $tuner_count -T $custom_ES \
-		    $file_w_vectors_training) \
-		    || exit 1
-	    fi
-	fi
-    fi
+    echo -n "5. [TRAINING] PRCs generation..."
+    time ($rocchio -D $file_doc_cat_training -B $p_init \
+	-o $file_W_vectors $file_w_vectors_training) \
+	|| exit 1
 }
 
 function step_6 {

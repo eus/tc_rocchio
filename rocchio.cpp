@@ -15,8 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.     *
  *****************************************************************************/
 
-#define THREADED
-
 #include <cassert>
 #include <map>
 #include <unordered_map>
@@ -28,7 +26,6 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
-#include <pthread.h>
 
 #ifdef BE_VERBOSE
 #include <unordered_set>
@@ -134,16 +131,10 @@ static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
   }
 }
 
-static unsigned int ES_file_vector_size = 0;
-static const char *ES_file_path = NULL;
 static unsigned int vector_size;
 static inline void vector_size_fn(unsigned int size)
 {
   vector_size = size;
-  if ((ES_file_path != NULL) && (vector_size != ES_file_vector_size)) {
-    fatal_error("Input stream vector size (%u) != Custom ES vector size (%u)",
-		vector_size, ES_file_vector_size);
-  }
 }
 
 static string word;
@@ -513,511 +504,7 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
     }
 }
 
-typedef vector<double /* BEP */> class_BEP_history_entry;
-typedef unordered_map<string /* cat name */,
-		      class_BEP_history_entry>class_BEP_history;
-typedef unordered_set<string> class_BEP_history_filter;
-static inline void output_BEP_history(FILE *out_stream,
-				      const class_BEP_history &history,
-				      const class_BEP_history_filter &filter,
-				      int inverted_filter,
-				      double p_init, double p_inc, double p_max)
-{
-  char markers[] = {'+', '*', 'o', 'x', '^'};
-  unsigned int marker_idx = 0;
-  char colors[] = {'k', 'r', 'g', 'b', 'm', 'c'};
-  unsigned int color_idx = 0;
-  unsigned int vec_size = 0;
-
-  for (class_BEP_history::const_iterator i = history.begin();
-       i != history.end();
-       i++)
-    {
-      if (i == history.begin()) { // Only once
-	fprintf(out_stream, "P = [%f:%f:%f];\n", p_init, p_inc, p_max);
-	vec_size = i->second.size();
-
-	/* Activate hold on */
-	fprintf(out_stream,
-		"plot(P(1), 0)\n"
-		"hold on\n");
-	/* Hold on activated */
-      }
-
-      if ((!filter.empty()
-	   && (((filter.find(i->first) == filter.end()) && !inverted_filter)
-	       || ((filter.find(i->first) != filter.end()) && inverted_filter)))
-	  || (filter.empty() && inverted_filter))
-	{
-	  continue;
-	}
-
-      /* Construct the BEP vector */
-      fprintf(out_stream, "BEP = [");
-      for (unsigned int j = 0; j < vec_size; j++) {
-	fprintf(out_stream, "%f ", i->second[j]);
-      }
-      fprintf(out_stream, "]; ");
-      /* End of BEP vector construction */
-
-      /* Plotting */
-      fprintf(out_stream,
-	      "plot(P, BEP, '-%c%c;%s;', 'markerfacecolor', 'none'"
-	      ", 'markersize', 5)\n", markers[marker_idx++],
-	      colors[color_idx++], i->first.c_str());
-
-      marker_idx %= sizeof(markers) / sizeof(markers[0]);
-      color_idx %= sizeof(colors) / sizeof(colors[0]);
-      /* End of plotting */
-    }
-
-  fprintf(out_stream,
-	  "hold off\n"
-	  "xlabel('P')\n"
-	  "ylabel('BEP')\n");
-}
-
-typedef vector<double> class_rand_nums;
-typedef unordered_map<string /* cat name */, double> class_best_P_per_cat;
-static inline void tune_parameter(unsigned int ES_index,
-				  unsigned int ES_percentage,
-				  unsigned int PERCENTAGE_MULTIPLIER,
-				  double tuning_init,
-				  double tuning_max,
-				  double tuning_inc,
-				  const char *BEP_h_file,
-				  const class_BEP_history_filter &BEP_h_filter,
-				  int BEP_h_filter_inverted,
-				  /* const */class_w_cats_list &all_unique_docs,
-				  /* const */class_data *ES_file_data,
-				  const class_rand_nums &serialized_rand,
-				  class_best_P_per_cat &best_P_per_cat)
-{
-#ifdef BE_VERBOSE
-  verbose_msg("*ES #%u:\n", ES_index);
-#endif
-
-  class_BEP_history BEP_history;
-  class_data ES_local;
-  class_data *ES = &ES_local; // will only store documents for estimation
-  class_data LS_min_ES; /* store everything to build W vectors but the
-			 * documents needed to perform Th estimation
-			 */
-
-  if (ES_file_data != NULL) {
-    ES = ES_file_data;
-  }
-
-  /* Construct ES and LS-ES*/
-  unsigned int rand_idx = 0;
-  for (class_w_cats_list::iterator j = all_unique_docs.begin();
-       j != all_unique_docs.end();
-       j++)
-    {
-      bool in_ES = ((ES_file_data == NULL)
-		    && ((serialized_rand[rand_idx++] * PERCENTAGE_MULTIPLIER)
-			< ES_percentage));
-      bool in_excluded_categories = (j->second == NULL);
-
-      if (in_ES) {
-
-	unique_docs(*ES).push_back(&(*j));
-
-#ifdef BE_VERBOSE
-	verbose_msg("ES_doc %s\n", w_to_doc_name[&j->first].c_str());
-#endif
-
-	if (in_excluded_categories) {
-
-#ifdef BE_VERBOSE
-	  cat_doc_list(*ES)[""].insert(&j->first);
-#else
-	  cat_doc_list(*ES)[""].push_back(&j->first);
-#endif
-	} else {
-
-	  const class_set_of_cats &GS = *(j->second);
-	  for (class_set_of_cats::const_iterator k = GS.begin();
-	       k != GS.end();
-	       k++)
-	    {
-
-#ifdef BE_VERBOSE
-	      cat_doc_list(*ES)[*k].insert(&j->first);
-#else
-	      cat_doc_list(*ES)[*k].push_back(&j->first);
-#endif
-	    }
-	}
-      } else {
-
-	/* unique_docs(LS_min_ES) is not updated because no estimation is
-	 * carried out in LS_min_ES although cat_doc_list(LS_min_ES) needs to
-	 * be constructed to build the profile vectors
-	 */
-
-	unique_doc_count(LS_min_ES)++;
-
-	if (in_excluded_categories) {
-
-#ifdef BE_VERBOSE
-	  cat_doc_list(LS_min_ES)[""].insert(&j->first);
-#else
-	  cat_doc_list(LS_min_ES)[""].push_back(&j->first);
-#endif
-	} else {
-
-	  const class_set_of_cats &GS = *(j->second);
-
-#ifdef DONT_FOLLOW_ROI
-	  unsigned int GS_cardinality = GS.size();
-	  if (GS_cardinality > 1) {
-	    multicats_docs_list(LS_min_ES)[&j->first] = GS_cardinality - 1;
-	  }
-#endif
-	  for (class_set_of_cats::const_iterator k = GS.begin();
-	       k != GS.end();
-	       k++)
-	    {
-#ifdef BE_VERBOSE
-	      cat_doc_list(LS_min_ES)[*k].insert(&j->first);
-#else
-	      cat_doc_list(LS_min_ES)[*k].push_back(&j->first);
-#endif
-	    }
-	}
-      }
-    }
-  /* End of constructions */
-
-  construct_cat_profile_list(cat_profile_list(LS_min_ES),
-			     cat_doc_list(LS_min_ES));
-
-#ifdef DONT_FOLLOW_ROI
-  prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES),
-	     multicats_docs_list(LS_min_ES));
-#else
-  prepare_Ws(cat_profile_list(LS_min_ES), cat_doc_list(LS_min_ES));
-#endif
-
-  for (double P = tuning_init; P <= tuning_max; P += tuning_inc)
-    {
-      construct_Ws(cat_profile_list(LS_min_ES),
-		   unique_doc_count(LS_min_ES),
-		   P);
-
-      for (class_cat_profile_list::iterator j
-	     = cat_profile_list(LS_min_ES).begin();
-	   j != cat_profile_list(LS_min_ES).end();
-	   j++)
-	{
-	  if (j->first.empty()) { // Don't consider excluded categories
-	    continue;
-	  }
-
-	  const string &cat_name = j->first;
-	  class_classifier &cat_classifier = j->second.second;
-	  class_W_property &prop = cat_classifier.first;
-
-#ifdef BE_VERBOSE
-	  verbose_msg("** P = %f on %s\n", P, cat_name.c_str());
-#endif
-	  double BEP = estimate_Th(unique_docs(*ES), cat_doc_list(*ES),
-				   cat_name, cat_classifier);
-	  prop.update_BEP_max(BEP, P);
-
-	  if (BEP_h_file != NULL) {
-	    BEP_history[cat_name].push_back(BEP);
-	  }
-	}
-    }
-
-  for (class_cat_profile_list::iterator j
-	 = cat_profile_list(LS_min_ES).begin();
-       j != cat_profile_list(LS_min_ES).end();
-       j++)
-    {
-      if (j->first.empty()) { // Don't consider excluded categories
-	continue;
-      }
-
-      class_W_property &prop = j->second.second.first;
-
-      best_P_per_cat[j->first] += prop.P_max;
-    }
-
-  if (BEP_h_file != NULL) {
-    char int2str[32];
-    snprintf(int2str, sizeof(int2str), "%u", ES_index);
-    string filename(BEP_h_file);
-    filename.append(".").append(int2str).append(".m");
-    FILE *local_out_stream = open_local_out_stream(filename.c_str());
-
-    output_BEP_history(local_out_stream, BEP_history, BEP_h_filter,
-		       BEP_h_filter_inverted, tuning_init, tuning_inc,
-		       tuning_max);
-    fprintf(local_out_stream, "print('-landscape', '-dsvg', '%s.svg');\n",
-	    filename.c_str());
-
-    close_local_out_stream(local_out_stream, filename.c_str());
-  }
-}
-
-static unsigned int ES_percentage_set = 0;
-static unsigned int ES_percentage;
-static const unsigned int PERCENTAGE_MULTIPLIER = 1000000;
-static unsigned int ES_count_set = 0;
-static unsigned int ES_count;
-static unsigned int ES_rseed_set = 0;
-static unsigned int ES_rseed;
-static unsigned int tuner_threads_count = 0;
 static double tuning_init = -1;
-static double tuning_inc = -1;
-static double tuning_max = -1;
-static char *BEP_history_file = NULL;
-static class_BEP_history_filter BEP_history_filter;
-static int BEP_history_filter_inverted = 0;
-
-class parameter_tuner_args {
-public:
-  unsigned int ES_index;
-  unsigned int ES_percentage;
-  unsigned int PERCENTAGE_MULTIPLIER;
-  double tuning_init;
-  double tuning_max;
-  double tuning_inc;
-  const char *BEP_history_file;
-  const class_BEP_history_filter *BEP_history_filter;
-  int BEP_history_filter_inverted;
-  /* const */class_w_cats_list *all_unique_docs;
-  class_best_P_per_cat best_P_per_cat;
-  class_rand_nums rand_nums;
-  class_data *ES_file_data;
-  int tuner_exit_status;
-
-  parameter_tuner_args(void)
-  {
-    this->ES_index = numeric_limits<unsigned int>::max();
-    this->ES_percentage = ::ES_percentage;
-    this->PERCENTAGE_MULTIPLIER = ::PERCENTAGE_MULTIPLIER;
-    this->tuning_init = ::tuning_init;
-    this->tuning_max = ::tuning_max;
-    this->tuning_inc = ::tuning_inc;
-    this->BEP_history_file = ::BEP_history_file;
-    this->BEP_history_filter = &::BEP_history_filter;
-    this->BEP_history_filter_inverted = ::BEP_history_filter_inverted;
-    this->all_unique_docs = &::all_unique_docs;
-    this->ES_file_data = NULL;
-    this->tuner_exit_status = EXIT_SUCCESS;
-  }
-};
-static void *run_parameter_tuner(void *args)
-{
-  struct parameter_tuner_args *data
-    = static_cast<struct parameter_tuner_args *>(args);
-
-  if (data->ES_index == numeric_limits<unsigned int>::max()) {
-    fatal_error("Programming error: ES_index is not set");
-  }
-
-#ifdef BE_VERBOSE
-  if (data->ES_file_data == NULL) {
-    verbose_msg("Parameter tuning using ordinary ES\n");
-  } else {
-    verbose_msg("Parameter tuning using custom ES\n");
-  }
-#endif
-
-  tune_parameter(data->ES_index, data->ES_percentage,
-		 data->PERCENTAGE_MULTIPLIER,
-		 data->tuning_init, data->tuning_max, data->tuning_inc,
-		 data->BEP_history_file,
-		 *data->BEP_history_filter, data->BEP_history_filter_inverted,
-		 *data->all_unique_docs, data->ES_file_data, data->rand_nums,
-		 data->best_P_per_cat);
-
-  return &data->tuner_exit_status;
-}
-
-static inline void initialize_rand_nums(class_rand_nums &rand_nums,
-					unsigned int amount)
-{
-  for (unsigned int i = 0; i < amount; i++) {
-    rand_nums.push_back(uniform_deviate(rand()));
-  }
-}
-
-typedef vector<class parameter_tuner_args> class_args_per_tuner_list;
-static inline void parameter_tuning(unsigned int ES_count,
-				    unsigned int tuner_threads_count,
-				 class_args_per_tuner_list &args_per_tuner_list,
-				    class_data *ES_file_data)
-{
-  typedef vector<pthread_t> class_tuner_list;
-  class_tuner_list tuner_list(tuner_threads_count);
-
-  unsigned int ES_index = 0;
-  while (ES_index < ES_count) {
-    for (class_tuner_list::iterator tuner = tuner_list.begin();
-	 tuner != tuner_list.end();
-	 tuner++)
-      {
-	if (ES_index == ES_count) {
-	  break;
-	}
-
-	class parameter_tuner_args &tuner_args = args_per_tuner_list[ES_index];
-	tuner_args.ES_index = ES_index;
-	tuner_args.ES_file_data = ES_file_data;
-	initialize_rand_nums(tuner_args.rand_nums,
-			     tuner_args.all_unique_docs->size());
-	if (pthread_create(&*tuner, NULL, run_parameter_tuner, &tuner_args)
-	    != 0) {
-	  fatal_syserror("Cannot create tuner thread at ES_index = %u",
-			 ES_index);
-	}
-
-	ES_index++;
-      }
-
-    /* Sync point (A faster way would be to create a new thread when an
-     * existing thread completes instead of waiting for all existing threads to
-     * complete; but that is more complicated)
-     */
-    for (class_tuner_list::const_iterator tuner = tuner_list.begin();
-	 tuner != tuner_list.end();
-	 tuner++)
-      {
-	if (pthread_join(*tuner, NULL) != 0) {
-	  fatal_syserror("Cannot wait for thread %u",
-			 static_cast<unsigned int>(*tuner));
-	}
-#ifdef BE_VERBOSE
-	verbose_msg("Tuner of ES #%u finishes\n", tuner - tuner_list.begin());
-#endif
-      }
-    /* End of synchronization */
-  }
-}
-
-static inline void sum_best_P_per_cat(
-			   const class_args_per_tuner_list &args_per_tuner_list,
-			   class_best_P_per_cat &best_P_per_cat_sum)
-{
-  for (class_args_per_tuner_list::const_iterator tuner_arg
-	 = args_per_tuner_list.begin();
-       tuner_arg != args_per_tuner_list.end();
-       tuner_arg++)
-    {
-      for (class_best_P_per_cat::const_iterator cat_best_P
-	     = tuner_arg->best_P_per_cat.begin();
-	   cat_best_P != tuner_arg->best_P_per_cat.end();
-	   cat_best_P++)
-	{
-	  best_P_per_cat_sum[cat_best_P->first] += cat_best_P->second;
-	}
-    }
-}
-
-static inline void ES_file_vector_size_fn(unsigned int size)
-{
-  ES_file_vector_size = size;
-}
-
-static inline void ES_file_string_partial_fn(char *str)
-{
-  word.append(str);
-}
-
-static class_w_cats_list ES_file_data_unique_docs; /* Contains all w in ES file
-						    * data
-						    */
-static class_data ES_file_data;
-static inline void ES_file_string_complete_fn(void)
-{
-  /* 1. Push an entry D into ES_file_data_unique_docs.
-   * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in
-   *    ES_file_data.
-   * 3. Set the gold standard of D based on the DOC_CAT file while
-   *    incrementing variable unique_doc_count of ES_file_data.
-   * 4. Copy D_ptr to the categories in the gold standard of D.
-   */
-
-  /* Step 1 */
-  ES_file_data_unique_docs.push_back(class_w_cats());
-  /* Step 1 completed */
-
-  /* Step 2 */
-  D_ptr = &ES_file_data_unique_docs.back();
-  unique_docs(ES_file_data).push_back(D_ptr);
-  /* Step 2 completed */
-
-  /* Step 3 */
-#ifdef BE_VERBOSE
-  w_to_doc_name[&D_ptr->first] = word;
-#endif
-
-  unique_doc_count(ES_file_data)++;
-
-  class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
-  if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
-
-    D_ptr->second = NULL;
-
-    /* Step 4 */
-#ifdef BE_VERBOSE
-    cat_doc_list(ES_file_data)[""].insert(&D_ptr->first);
-#else
-    cat_doc_list(ES_file_data)[""].push_back(&D_ptr->first);
-#endif
-    /* Step 4 completed */
-  } else {
-
-    class_set_of_cats &doc_GS = GS_entry->second;
-    D_ptr->second = &doc_GS;
-
-    /* Step 4 */
-    for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
-      {
-#ifdef BE_VERBOSE
-	cat_doc_list(ES_file_data)[*i].insert(&D_ptr->first);
-#else
-	cat_doc_list(ES_file_data)[*i].push_back(&D_ptr->first);
-#endif
-      }
-    /* Step 4 completed */
-  }
-  /* Step 3 completed */
-
-  word.clear();
-}
-
-static inline void ES_file_offset_count_fn(unsigned int count)
-{
-}
-
-static inline void ES_file_double_fn(unsigned int index, double value)
-{
-  D_ptr->first[index] = value;
-}
-
-static inline void ES_file_end_of_vector_fn(void)
-{
-}
-
-static inline void load_ES_file(const char *path)
-{
-  open_in_stream(path);
-
-  parse_vector(buffer, BUFFER_SIZE,
-	       ES_file_vector_size_fn,
-	       ES_file_string_partial_fn,
-	       ES_file_string_complete_fn,
-	       ES_file_offset_count_fn,
-	       ES_file_double_fn,
-	       ES_file_end_of_vector_fn);
-}
-
 MAIN_BEGIN(
 "rocchio",
 "If input file is not given, stdin is read for input. Otherwise, the input\n"
@@ -1051,32 +538,20 @@ MAIN_BEGIN(
 "document is considered to belong to an excluded category (the document is\n"
 "still taken into account to generate the classifiers of included categories)."
 "\n"
-"If -E is 0, then parameter tuning is not carried out and the\n"
-"profiling is carried out using the value of -B as the value of P while the\n"
-"thresholds are estimated on all w vectors.\n"
-"Otherwise, a number of estimation sets (ES) are built. Each ES contains a\n"
-"percentage of randomly selected documents from the input list.\n"
-"The percentage is specified using the mandatory option -P.\n"
-"The random seed must be specified using the mandatory option -S.\n"
-"To do parameter tuning on a custom set of documents, a sparse vector file\n"
-"containing a set of w vectors in the same binary structure as the input data\n"
-"can be loaded using the mandatory option -T. If the -T option is specified,\n"
-"the option -E, -S, -P and -J described above are ignored. In effect,\n"
-"the option -T creates one ES populated with the given set of w vectors.\n"
-"Next, for each ES, starting from P as specified by the mandatory option -B,\n"
-"this processing unit will calculate the profile vector W of the category C\n"
-"using the weight vectors of documents not in ES as follows:\n"
+"Then, profiling is carried out using P specified by the mandatory option -B\n"
+"while the thresholds are estimated on all w vectors.\n"
+"This processing unit will calculate the profile vector W of the category C\n"
+"using the weight vectors of documents as follows:\n"
 "W = <W_1, ..., W_N> and\n"
 "             1                               P\n"
 "W_i = max{0,---(S over d in C of [w^d_i]) - ----(S over e in ~C of [w^e_i])}\n"
 "            |C|                             |~C|\n"
-"where S means sum, C is the set of documents having category C but not in ES,"
-"\n"
-"~C is the set of documents not having category C and not in ES, and P is the\n"
-"tuning parameter.\n"
+"where S means sum, C is the set of documents having category C,\n"
+"~C is the set of documents not having category C, and"
+"P is the tuning parameter.\n"
 "Then, to estimate the threshold (Th) of the profile vector W,\n"
-"for each document in ES, this processing unit will calculate the dot\n"
-"product of the document weight vector w with the profile vector W.\n"
+"this processing unit will calculate the dot product of the document weight\n"
+"vector w with the profile vector W.\n"
 "The values of the dot products are sorted in descending order as follows:\n"
 "v_1 ... v_k where v_i is the value of some dot products (i.e., some dot\n"
 "products might have the same value) and v_1 is the greatest value.\n"
@@ -1095,23 +570,7 @@ MAIN_BEGIN(
 "                           a       a\n"
 "                = 0.5 * (----- + -----)\n"
 "                         a + b   a + c\n"
-"The BEP is then associated with the current P while the Th is discarded.\n"
-"Then, P is incremented by an amount as specified using the mandatory\n"
-"option -I. If the new P is still less than or equal to the value specified\n"
-"using the mandatory option -M, this processing unit repeat the W calculation\n"
-"and threshold estimation processes all over again using the new P, obtaining\n"
-"another interpolated BEP value. Once P exceeds the maximum value, the value\n"
-"of P associated with the maximum BEP is associated with ES while the other\n"
-"values of P and BEP are discarded.\n"
-"After this process has been done with all ESes, the values of P each of\n"
-"which is associated with an ES are averaged to obtain P_avg.\n"
-"Since the processing of each ES is independent from the other, multiple\n"
-"threads can be used to speed up the parameter tuning process. The number of\n"
-"ES processing threads is specified using the mandatory option -J that must\n"
-"be at least 1.\n"
-"Finally, this processing unit will use P_avg to generate the final W vector\n"
-"and estimate the Th of this final W vector on the whole documents given in\n"
-"the input stream. The result is a binary classifier for category C.\n"
+"This completes the construction of a binary classifier for category C.\n"
 "Because the aforementioned process is done for all K categories, the final\n"
 "result that is output by this processing unit is K binary classifiers in the\n"
 "form of K profile vectors and the corresponding thresholds in the following\n"
@@ -1134,21 +593,9 @@ MAIN_BEGIN(
 "Additionally, the value of BEP_i associated with Th_i is encoded as the\n"
 "third entry with N+2 as its offset.\n"
 "The result is output to the given file if an output file is specified.\n"
-"Otherwise, stdout is used to output binary data.\n"
-"If so desired, the prefix name of a GNU Octave script, which is MATLAB\n"
-"compatible, can be specified using -H option.\n"
-"The script will plot the BEPs of categories listed by -F, during\n"
-"parameter tuning. To negate the list, prefix the list with a caret (^).\n"
-"For example, to plot only categories acq and earn, use -F acq,earn.\n"
-"To plot all categories but acq and earn, use -F ^acq,earn.\n"
-"For each ES, there will be one script having the following name:\n"
-"BEP_HISTORY_FILE.ES_NO.m.\n",
-"D:B:I:M:E:P:S:H:F:J:T:",
-"-D DOC_CAT_FILE -B INIT_VALUE_OF_P -I INCREMENT_OF_P -M MAX_OF_P\n"
-" (-T SPARSE_VECTOR_FILE | -E ESTIMATION_SETS_COUNT -S RANDOM_SEED\n"
-" -P ES_PERCENTAGE_OF_DOC_IN_[0.000...100.000]\n"
-" -J PARAMETER_TUNING_THREAD_COUNT)\n"
-" [-H BEP_HISTORY_FILE [-F LIST_OF_CAT_NAMES_TO_PLOT]]\n",
+"Otherwise, stdout is used to output binary data.\n",
+"D:B:",
+"-D DOC_CAT_FILE -B VALUE_OF_P\n",
 0,
 case 'D':
 /* Allocating tokenizing buffer */
@@ -1170,122 +617,12 @@ if (!isfinite(tuning_init)) {
 }
 break;
 
-case 'I':
-tuning_inc = strtod(optarg, NULL);
-if (!isfinite(tuning_inc)) {
-  fatal_error("INCREMENT_OF_P must be finite");
-} else if (fpclassify(tuning_inc) == FP_ZERO || tuning_inc <= 0.0) {
-  fatal_error("INCREMENT_OF_P must be > 0");
-}
-break;
-
-case 'M':
-tuning_max = strtod(optarg, NULL);
-if (!isfinite(tuning_max)) {
-  fatal_error("MAX_OF_P must be finite");
-} else if (fpclassify(tuning_max) == FP_ZERO || tuning_max <= 0.0) {
-  fatal_error("MAX_OF_P must be > 0");
-}
-break;
-
-case 'E': {
-  long int num = (long int) strtoul(optarg, NULL, 10);
-  if (num < 0) {
-    fatal_error("ESTIMATION_SETS_COUNT must be >= 0");
-  }
-  ES_count = num;
-  ES_count_set = 1;
-}
-break;
-
-case 'P': {
-  double num = strtod(optarg, NULL) / 100 * PERCENTAGE_MULTIPLIER;
-  if (num < 0) {
-    fatal_error("ES_PERCENTAGE_OF_DOC must be >= 0");
-  }
-  ES_percentage = static_cast<unsigned int>(num);
-  ES_percentage_set = 1;
-}
-break;
-
-case 'S': {
-  long int num = (long int) strtoul(optarg, NULL, 10);
-  if (num < 0) {
-    fatal_error("RANDOM_SEED must be >= 0");
-  }
-  ES_rseed = num;
-  ES_rseed_set = 1;
-}
-break;
-
-case 'T': {
-  ES_file_path = optarg;
-}
-break;
-
-case 'J': {
-  long int num = (long int) strtoul(optarg, NULL, 10);
-  if (num < 1) {
-    fatal_error("PARAMETER_TUNING_THREAD_COUNT must be >= 1");
-  }
-  tuner_threads_count = num;
-}
-break;
-
-case 'H': {
-  BEP_history_file = optarg;
-}
-break;
-
-case 'F': {
-  char *ptr = optarg;
-
-  if (ptr[0] == '^') {
-    BEP_history_filter_inverted = 1;
-    ptr++;
-  }
-
-  ptr = strtok(ptr, ",");
-  while (ptr != NULL) {
-    BEP_history_filter.insert(string(ptr));
-    ptr = strtok(NULL, ",");
-  }
-}
-break;
-
 ) {
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
   if (tuning_init < 0) {
     fatal_error("-B must be specified (-h for help)");
-  }
-  if (tuning_inc < 0) {
-    fatal_error("-I must be specified (-h for help)");
-  }
-  if (tuning_max < 0) {
-    fatal_error("-M must be specified (-h for help)");
-  }
-  if (ES_file_path == NULL) {
-    if (!ES_count_set) {
-      fatal_error("-E must be specified (-h for help)");
-    }
-    if (!ES_percentage_set) {
-      fatal_error("-P must be specified (-h for help)");
-    }
-    if (!ES_rseed_set) {
-      fatal_error("-S must be specified (-h for help)");
-    }
-    if (tuner_threads_count == 0) {
-      fatal_error("-J must be specified (-h for help)");
-    }
-  } else {
-    load_ES_file(ES_file_path);
-    tuner_threads_count = 1;
-    ES_count = 1;
-#ifdef BE_VERBOSE
-    verbose_msg("Option -T is given. Must use custom ES.\n");
-#endif
   }
 }
 
@@ -1295,8 +632,6 @@ test_estimate_Th();
 
 fatal_error("This only runs the test cases of " __FILE__);
 #endif /* NDEBUG */
-
-srand(ES_rseed);
 
 MAIN_INPUT_START
 {
@@ -1313,58 +648,19 @@ prepare_Ws(cat_profile_list(LS), cat_doc_list(LS), multicats_docs_list(LS));
 prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
 #endif
 
-if (ES_count > 0) {
-  class_args_per_tuner_list args_per_tuner_list(ES_count);
-  parameter_tuning(ES_count, tuner_threads_count, args_per_tuner_list,
-		   ES_file_path == NULL ? NULL : &ES_file_data);
-
-  class_best_P_per_cat best_P_per_cat_sum;
-  sum_best_P_per_cat(args_per_tuner_list, best_P_per_cat_sum);
-
-  for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-       i != cat_profile_list(LS).end();
-       i++)
-    {
-      if (i->first.empty()) { // Don't consider excluded categories
-	continue;
-      }
-
-      i->second.second.first.P_avg = (best_P_per_cat_sum[i->first]
-				      / static_cast<double>(ES_count));
-
-#ifdef BE_VERBOSE
-      verbose_msg("Best Ps of %s:\n", i->first.c_str());
-      for (unsigned int ES_index = 0; ES_index < ES_count; ES_index++) {
-	verbose_msg("@ES #%u: %f\n", ES_index,
-		    args_per_tuner_list[ES_index].best_P_per_cat[i->first]);
-      }    
-      verbose_msg("Sum of Ps = %f; P_avg = %f\n",
-		  best_P_per_cat_sum[i->first], i->second.second.first.P_avg);
-#endif
+for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
+     i != cat_profile_list(LS).end();
+     i++)
+  {
+    if (i->first.empty()) { // Don't consider excluded categories
+      continue;
     }
-} else {
-#ifdef BE_VERBOSE
-  verbose_msg("No ES, setting all classifiers P to INIT_VALUE_OF_P (%f)\n",
-	      tuning_init);
-#endif
-  for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-       i != cat_profile_list(LS).end();
-       i++)
-    {
-      if (i->first.empty()) { // Don't consider excluded categories
-	continue;
-      }
 
-      i->second.second.first.P_avg = tuning_init;
-    }
-}
+    i->second.second.first.P_avg = tuning_init;
+  }
 
-construct_Ws(cat_profile_list(LS), unique_doc_count(LS),
-	     ((ES_count == 0) ? tuning_init : -1));
+construct_Ws(cat_profile_list(LS), unique_doc_count(LS), -1);
 
-#ifdef BE_VERBOSE
-verbose_msg("*LS:\n");
-#endif
 for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
      i != cat_profile_list(LS).end();
      i++)
