@@ -23,7 +23,7 @@ tmp_performance_file=$result_base_dir/perf.csv
 # End of modifiable parameters that do not affect reproducibility
 
 # Changing the following alters how the experiment is conducted
-various_ES_percentages='30 40 50 60'
+various_ES_percentages='40 50'
 valset_count=2
 valset_percentage=30
 reported_cats='earn acq money-fx grain crude trade interest ship wheat corn'
@@ -129,7 +129,7 @@ function run_crossval_various_ES_percentages {
         echo 'Global Performance' >> $performance_result
         echo -n 'nth cross-validation set' >> $performance_result
         echo -ne '\tMacro Average\tMicro Average' >> $performance_result
-        echo -e '\tMicro Average f1\tAverage BEP' >> $performance_result
+        echo -e '\t\tMicro Average f1\t\tAverage BEP' >> $performance_result
         echo -e '\tPrecision\tRecall\tPrecision\tRecall' >> $performance_result
         for ((i=1; i <= $valset_count; i++)); do
             tail -n 1 `eval echo $final_result_dir`/perf_measure.txt \
@@ -139,16 +139,16 @@ function run_crossval_various_ES_percentages {
         end=`cat $performance_result | wc -l`
         start=$((end - valset_count + 1))
         echo -n '=AVERAGE($F$'$start':$F$'$end')' >> $tmp_performance_file
-        echo -e '\t=STDEV($F$'$start':$F:$'$end')' >> $tmp_performance_file
+        echo -e '\t=STDEV($F$'$start':$F$'$end')' >> $tmp_performance_file
         echo '' >> $performance_result
 
         # Per category performance
         for cat in $reported_cats; do
+            echo "Performance on Category $cat" >> $performance_result
+            echo -n 'nth cross-validation set' >> $performance_result
+            echo -e '\ta\tb\tc\tPrecision\tRecall\tf1\tBEP' \
+                >> $performance_result
             for ((i=1; i <= $valset_count; i++)); do
-                echo "Performance on Category $cat" >> $performance_result
-                echo -n 'nth cross-validation set' >> $performance_result
-                echo -e '\ta\tb\tc\tPrecision\tRecall\tf1\tBEP' \
-                    >> $performance_result
                 grep -m 1 -- ^$cat \
                     `eval echo $final_result_dir`/perf_measure.txt \
                     | sed -e 's%.*%'$i'\t&%' \
@@ -157,7 +157,7 @@ function run_crossval_various_ES_percentages {
             end=`cat $performance_result | wc -l`
             start=$((end - valset_count + 1))
             echo -ne '=AVERAGE($F$'$start':$F$'$end')' >> $tmp_performance_file
-            echo -e '\t=STDEV($F$'$start':$F:$'$end')' >> $tmp_performance_file
+            echo -e '\t=STDEV($F$'$start':$F$'$end')' >> $tmp_performance_file
             echo '' >> $performance_result
         done
 
