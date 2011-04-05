@@ -9,7 +9,7 @@ rseeds_out_file=/tmp/experiment_ground/rseeds.output
 timing_result=/tmp/experiment_ground/timing.csv
 performance_result=/tmp/experiment_ground/performance.csv
 
-thread_count=8
+thread_count=4
 
 rseed_index_file=/tmp/experiment_ground/rseed_index_file.txt
 reuters_training_dir=/tmp/Reuters21578-Apte-90Cat/training
@@ -78,8 +78,8 @@ function run_crossval_various_ES_percentages {
         for ((i=1; i <= $valset_count; i++)); do
             echo "i=$i percentage=$percentage `date`"
             mkdir $result_base_dir/result/
-            ln -s ../raw_data/training/ /tmp/result/
-            ln -s ../raw_data/testing /tmp/result
+            ln -s ../raw_data/training/ $result_base_dir/result/
+            ln -s ../raw_data/testing $result_base_dir/result
 
             # The following rseeds must be obtained in this order
             cross_rseed=$(next_rseed)
