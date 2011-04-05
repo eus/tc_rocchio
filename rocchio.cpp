@@ -16,30 +16,23 @@
  *****************************************************************************/
 
 #include <cassert>
-#include <map>
 #include <unordered_map>
-#include <vector>
 #include <string>
-#include <list>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cmath>
 #include <limits>
-
-#ifdef BE_VERBOSE
 #include <unordered_set>
-#endif
 
 #include "utility.h"
 #include "utility.hpp"
 #include "utility_vector.hpp"
-#include "utility_doc_cat_list.hpp"
-#include "utility_classifier.hpp"
 #include "utility_threshold_estimation.hpp"
 #include "rocchio.hpp"
 
 using namespace std;
+
+typedef unordered_set<string> class_doc_names_in_C;
 
 static char *buffer = NULL;
 CLEANUP_BEGIN
@@ -49,255 +42,10 @@ CLEANUP_BEGIN
   }
 } CLEANUP_END
 
-static class_w_cats_list all_unique_docs; /* Contains all w in the input */
-static class_w_cats_list Th_estimation_docs; /* Contains all w in
-					      * W_VECTORS_SET_FOR_TH_ESTIMATION
-					      * file
-					      */
-
-#ifdef DONT_FOLLOW_ROI
-typedef pair<pair<class_sparse_vector /* sum of w in C */,
-		  class_sparse_vector /* adjustment for multicats docs */>,
-	     unsigned int /* |C| */> class_W_construction;
-#else
-typedef pair<class_sparse_vector /* sum of w in C */,
-	     unsigned int /* |C| */> class_W_construction;
-#endif
-typedef pair<class_W_construction, class_classifier> class_cat_profile;
-typedef pair<string /* cat name */,
-	     class_cat_profile /* classifier of this cat */
-	     > class_cat_profile_list_entry;
-typedef vector<class_cat_profile_list_entry> class_cat_profile_list;
-
-#ifdef DONT_FOLLOW_ROI
-typedef unordered_map<class_sparse_vector *,
-		      unsigned int /* |GS(d)| - 1 */> class_multicats_docs;
-typedef pair<pair<pair<class_cat_doc_list,
-		       class_multicats_docs>,
-		  unsigned int /* unique doc count (i.e., M) */>,
-	     class_cat_profile_list> class_W_construction_material;
-#else
-typedef pair<pair<class_cat_doc_list,
-		  unsigned int /* unique doc count (i.e., M) */>,
-	     class_cat_profile_list> class_W_construction_material;
-#endif
-
-typedef pair<class_unique_docs_for_estimating_Th,
-	     class_W_construction_material> class_data;
-
-static inline unsigned int &unique_doc_count(class_data &data)
-{
-  return data.second.first.second;
-}
-static inline class_cat_doc_list &cat_doc_list(class_data &data)
-{
-#ifdef DONT_FOLLOW_ROI
-  return data.second.first.first.first;
-#else
-  return data.second.first.first;
-#endif
-}
-#ifdef DONT_FOLLOW_ROI
-static inline class_multicats_docs &multicats_docs_list(class_data &data)
-{
-  return data.second.first.first.second;
-}
-#endif
-static inline class_unique_docs_for_estimating_Th &unique_docs(class_data &data)
-{
-  return data.first;
-}
-static inline class_cat_profile_list &cat_profile_list(class_data &data)
-{
-  return data.second.second;
-}
-
-static class_doc_cat_list gold_standard;
-static class_data LS; /* All w in the input are cached here for constructing
-		       * the classifiers
-		       */
-static class_data Th_estimation_set; /* All w in W_VECTORS_SET_FOR_TH_ESTIMATION
-				      * are cached here for Th estimation
-				      */
-static inline void doc_cat_fn(const string &doc_name, const string &cat_name)
-{
-  if (doc_name.empty()) {
-    fatal_error("DOC_CAT file must not contain an empty document name");
-  }
-  if (cat_name.empty()) { // Empty cat is used to indicate excluded cat
-    fatal_error("DOC_CAT file must not contain an empty category name");
-  }
-
-  gold_standard[doc_name].insert(cat_name);
-
-  class_cat_doc_list::iterator i = cat_doc_list(LS).find(cat_name);
-  if (i == cat_doc_list(LS).end()) {
-    cat_doc_list(LS)[cat_name];
-  }
-}
-
-static unsigned int Th_vector_size;
-static unsigned int vector_size;
-static inline void vector_size_fn(unsigned int size)
-{
-  vector_size = size;
-  if (vector_size != Th_vector_size) {
-    fatal_error("Size of w vectors in input (%u) != in Th estimation set (%u)",
-		vector_size, Th_vector_size);
-  }
-}
-
-static string word;
-static inline void string_partial_fn(char *str)
-{
-  word.append(str);
-}
-
-static class_w_cats_ptr D_ptr = NULL;
-static inline void string_complete_fn(void)
-{
-  /* 1. Push an entry D into all_unique_docs.
-   * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in LS.
-   * 3. Set the gold standard of D based on the DOC_CAT file while
-   *    incrementing variable unique_doc_count of LS.
-   * 4. Copy D_ptr to the categories in the gold standard of D.
-   */
-
-  /* Step 1 */
-  all_unique_docs.push_back(class_w_cats());
-  /* Step 1 completed */
-
-  /* Step 2 */
-  D_ptr = &all_unique_docs.back();
-  unique_docs(LS).push_back(D_ptr);
-  /* Step 2 completed */
-
-  /* Step 3 */
-#ifdef BE_VERBOSE
-  w_to_doc_name[&D_ptr->first] = word;
-#endif
-
-  unique_doc_count(LS)++;
-
-  class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
-  if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
-
-    D_ptr->second = NULL;
-
-    /* Step 4 */
-#ifdef BE_VERBOSE
-    cat_doc_list(LS)[""].insert(&D_ptr->first);
-#else
-    cat_doc_list(LS)[""].push_back(&D_ptr->first);
-#endif
-    /* Step 4 completed */
-  } else {
-
-    class_set_of_cats &doc_GS = GS_entry->second;
-    D_ptr->second = &doc_GS;
-
-#ifdef DONT_FOLLOW_ROI
-    unsigned int doc_GS_cardinality = doc_GS.size();
-    if (doc_GS_cardinality > 1) {
-      multicats_docs_list(LS)[&D_ptr->first] = doc_GS_cardinality - 1;
-    }
-#endif
-
-    /* Step 4 */
-    for (class_set_of_cats::iterator i = doc_GS.begin(); i != doc_GS.end(); i++)
-      {
-#ifdef BE_VERBOSE
-	cat_doc_list(LS)[*i].insert(&D_ptr->first);
-#else
-	cat_doc_list(LS)[*i].push_back(&D_ptr->first);
-#endif
-      }
-    /* Step 4 completed */
-  }
-  /* Step 3 completed */
-
-  word.clear();
-}
-
-static inline void offset_count_fn(unsigned int count)
-{
-}
-
-static inline void double_fn(unsigned int index, double value)
-{
-  D_ptr->first[index] = value;
-}
-
-static inline void end_of_vector_fn(void)
-{
-}
-
-static inline void Th_vector_size_fn(unsigned int size)
-{
-  Th_vector_size = size;
-}
-
-static inline void Th_string_partial_fn(char *str)
-{
-  word.append(str);
-}
-
-static inline void Th_string_complete_fn(void)
-{
-  /* 1. Push an entry D into Th_estimation_docs.
-   * 2. Set the pointer D_ptr to D to fill in the vector w and cache it in
-   *    Th_estimation_set.
-   * 3. Set the gold standard of D based on the DOC_CAT file while
-   *    incrementing variable unique_doc_count of Th_estimation_set.
-   */
-
-  /* Step 1 */
-  Th_estimation_docs.push_back(class_w_cats());
-  /* Step 1 completed */
-
-  /* Step 2 */
-  D_ptr = &Th_estimation_docs.back();
-  unique_docs(Th_estimation_set).push_back(D_ptr);
-  /* Step 2 completed */
-
-  /* Step 3 */
-#ifdef BE_VERBOSE
-  w_to_doc_name[&D_ptr->first] = word;
-#endif
-
-  unique_doc_count(Th_estimation_set)++;
-
-  class_doc_cat_list::iterator GS_entry = gold_standard.find(word);
-  if (GS_entry == gold_standard.end()) { // Doc is in excluded categories
-
-    D_ptr->second = NULL;
-
-  } else {
-
-    class_set_of_cats &doc_GS = GS_entry->second;
-    D_ptr->second = &doc_GS;
-
-  }
-  /* Step 3 completed */
-
-  word.clear();
-}
-
-static inline void Th_offset_count_fn(unsigned int count)
-{
-}
-
-static inline void Th_double_fn(unsigned int index, double value)
-{
-  D_ptr->first[index] = value;
-}
-
-static inline void Th_end_of_vector_fn(void)
-{
-}
-
-static inline void output_classifiers(const class_cat_profile_list
-				      &cat_profile_list)
+static inline void output_classifier(const string &cat_name,
+				     unsigned int vector_size,
+				     const class_sparse_vector &W,
+				     double Th, double P, double BEP)
 {
   size_t block_write = fwrite(&vector_size, sizeof(vector_size), 1,
 			      out_stream);
@@ -305,155 +53,56 @@ static inline void output_classifiers(const class_cat_profile_list
     fatal_syserror("Cannot write normal vector size to output stream");
   }
 
-  unsigned int i_cnt = 0;
-  for (class_cat_profile_list::const_iterator i = cat_profile_list.begin();
-       i != cat_profile_list.end();
-       i++)
+  block_write = fwrite(cat_name.c_str(),
+		       cat_name.length() + 1, 1, out_stream);
+  if (block_write == 0) {
+    fatal_syserror("Cannot write category name to output stream");
+  }
+
+  unsigned int Q = W.size() + 3;
+  block_write = fwrite(&Q, sizeof(Q), 1, out_stream);
+  if (block_write == 0) {
+    fatal_syserror("Cannot output offset count");
+  }
+
+  struct sparse_vector_entry e;
+  e.offset = vector_size;
+  e.value = Th;
+  block_write = fwrite(&e, sizeof(e), 1, out_stream);
+  if (block_write == 0) {
+    fatal_syserror("Cannot output threshold");
+  }
+  e.offset++;
+  e.value = P;
+  block_write = fwrite(&e, sizeof(e), 1, out_stream);
+  if (block_write == 0) {
+    fatal_syserror("Cannot output P");
+  }
+  e.offset++;
+  e.value = BEP;
+  block_write = fwrite(&e, sizeof(e), 1, out_stream);
+  if (block_write == 0) {
+    fatal_syserror("Cannot output BEP");
+  }
+
+  unsigned int k_cnt = 0;
+  for (class_sparse_vector::const_iterator k = W.begin();
+       k != W.end();
+       k++, k_cnt++)
     {
-      if (i->first.empty() // Don't consider excluded categories
-	  || (i->second.first.second == 0)) { /* No document in the input stream
-					       * has this category
-					       */
-	continue;
-      }
+      e.offset = k->first;
+      e.value = k->second;
 
-      block_write = fwrite(i->first.c_str(),
-			   i->first.length() + 1, 1, out_stream);
-      if (block_write == 0) {
-	fatal_syserror("Cannot write category name #%u to output stream",
-		       i_cnt + 1);
-      }
-
-      const class_sparse_vector &W = i->second.second.second;
-
-      unsigned int Q = W.size() + 3;
-      block_write = fwrite(&Q, sizeof(Q), 1, out_stream);
-      if (block_write == 0) {
-	fatal_syserror("Cannot output offset count of vector #%u", i_cnt + 1);
-      }
-
-      struct sparse_vector_entry e;
-      e.offset = vector_size;
-      e.value = i->second.second.first.threshold;
       block_write = fwrite(&e, sizeof(e), 1, out_stream);
       if (block_write == 0) {
-	fatal_syserror("Cannot output threshold of vector #%u", i_cnt + 1);
+	fatal_syserror("Cannot output offset #%u", k_cnt + 1);
       }
-      e.offset++;
-      e.value = i->second.second.first.P_avg;
-      block_write = fwrite(&e, sizeof(e), 1, out_stream);
-      if (block_write == 0) {
-	fatal_syserror("Cannot output P of vector #%u", i_cnt + 1);
-      }
-      e.offset++;
-      e.value = i->second.second.first.BEP;
-      block_write = fwrite(&e, sizeof(e), 1, out_stream);
-      if (block_write == 0) {
-	fatal_syserror("Cannot output BEP of vector #%u", i_cnt + 1);
-      }
-
-      unsigned int k_cnt = 0;
-      for (class_sparse_vector::const_iterator k = W.begin();
-	   k != W.end();
-	   k++, k_cnt++)
-	{
-	  e.offset = k->first;
-	  e.value = k->second;
-
-	  block_write = fwrite(&e, sizeof(e), 1, out_stream);
-	  if (block_write == 0) {
-	    fatal_syserror("Cannot output offset #%u of vector #%u",
-			   k_cnt + 1, i_cnt + 1);
-	  }
-      }
-
-      i_cnt++;
     }
 }
 
-/* Given a cat doc list, construct a cat profile list containing all categories
- * in the given cat doc list.
- */
-static inline void construct_cat_profile_list(class_cat_profile_list &list,
-					      const class_cat_doc_list &cat_doc)
-{
-  for (class_cat_doc_list::const_iterator i = cat_doc.begin();
-       i != cat_doc.end();
-       i++)
-    {
-      list.push_back(class_cat_profile_list_entry(i->first,
-						  class_cat_profile()));
-    }
-}
-
-#ifdef DONT_FOLLOW_ROI
-/* For each cat profile in the cat profile list, find a set of docs that
- * belongs to the cat profile in cat doc list, sum the w vectors of those
- * documents registering the adjustment necessary for documents categorized into
- * more than one category, and store the result in the cat profile for later
- * construction of W vector.
- */
-static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
-			      const class_cat_doc_list &cat_doc_list,
-			      const class_multicats_docs &multicats_docs)
-#else
-/* For each cat profile in the cat profile list, find a set of docs that
- * belongs to the cat profile in cat doc list, sum the w vectors of those
- * documents and store the result in the cat profile for later construction of
- * W vector.
- */
-static inline void prepare_Ws(class_cat_profile_list &cat_profile_list,
-			      const class_cat_doc_list &cat_doc_list)
-#endif
-{
-  for (class_cat_profile_list::iterator i = cat_profile_list.begin();
-       i != cat_profile_list.end();
-       i++)
-    {
-      const string &cat_name = i->first;
-      class_W_construction &cat_W_construction = i->second.first;
-
-      class_cat_doc_list::const_iterator e = cat_doc_list.find(cat_name);
-      if (e == cat_doc_list.end() || e->second.empty()) {
-
-	cat_W_construction.second = 0; // |C|
-#ifdef DONT_FOLLOW_ROI
-	cat_W_construction.first.first.clear(); // no doc, sum of w vectors is 0
-	cat_W_construction.first.second.clear(); // no doc, no adjustment needed
-#else
-	cat_W_construction.first.clear(); // Has no doc, sum of w vectors is 0
-#endif
-	continue;
-      }
-
-      const class_docs &cat_docs = e->second;
-
-      cat_W_construction.second = cat_docs.size(); // |C|
-      for (class_docs::const_iterator j = cat_docs.begin(); // sum all w
-	   j != cat_docs.end();
-	   j++)
-	{
-#ifdef DONT_FOLLOW_ROI
-	  add_sparse_vector(cat_W_construction.first.first, **j);
-
-	  class_multicats_docs::const_iterator d = multicats_docs.find(*j);
-	  if (d != multicats_docs.end()) {
-	    add_weighted_sparse_vector(cat_W_construction.first.second, **j,
-				       d->second);
-	  }
-#else
-	  add_sparse_vector(cat_W_construction.first, **j);
-#endif
-	}
-    }
-}
-
-/* If P is set to -1, the value of P_avg stored in each cat profile will be
- * used to construct the corresponding W vector.
- */
-static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
-				const unsigned int unique_doc_count,
-				double P)
+static inline void construct_Ws(class_sparse_vector &W,	double P,
+				const class_unique_docs &LS_min_ES_in_C,
+				const class_unique_docs &LS_min_ES_not_in_C)
 {
   /* In this implementation, each category C in the category profile has its
    * sum of w vectors that have the category C in their gold standards.
@@ -487,99 +136,133 @@ static inline void construct_Ws(class_cat_profile_list &cat_profile_list,
    * from the W vector.
    */
 
-  for (class_cat_profile_list::iterator i = cat_profile_list.begin();
-       i != cat_profile_list.end();
-       i++)
-    {
-      if (i->first.empty()) { // Don't consider excluded categories
-	continue;
+  unsigned int C_cardinality = LS_min_ES_in_C.size();
+  unsigned int not_C_cardinality = LS_min_ES_not_in_C.size();
+
+  W.clear();
+
+  /* The first term. If C_cardinality == 0, sum_w_in_C should be all zeros
+   * (i.e., the sparse vector is empty), and so, W should be empty too  */
+  if (C_cardinality == 0) {
+    return; // W is already all 0. There is no point to do subtraction.
+  }
+
+  const_foreach(class_unique_docs, LS_min_ES_in_C, d) {
+    add_sparse_vector(W, d->second);
+  }
+
+  assign_weighted_sparse_vector(W, W, 1.0 / C_cardinality);
+
+  /* The second term, the penalizing part. P is assumed to be >= 0.0 */
+  if (fpclassify(P) != FP_ZERO && not_C_cardinality != 0) {
+
+    double multiplier = P / static_cast<double>(not_C_cardinality);
+
+    const_foreach(class_unique_docs, LS_min_ES_not_in_C, d) {
+      const_foreach(class_sparse_vector, d->second, vec_entry) {
+	class_sparse_vector::iterator W_e = W.find(vec_entry->first);
+
+	if (W_e == W.end()) { // entry is already zero
+	  continue;
+	}
+
+	W_e->second -= multiplier * vec_entry->second;
+
+	/* If W_e->second is zero, it must be removed since this is
+	 * a sparse vector. And, due to floating-point error, the
+	 * zero can be a bit higher than the true zero.
+	 */
+	if (W_e->second <= FP_COMPARISON_DELTA) { // max {0, ...
+	  W.erase(W_e); // since W is a sparse vector
+	}
       }
-
-      class_cat_profile &cat_profile = i->second;
-
-      unsigned int &C_cardinality = cat_profile.first.second;
-      unsigned int not_C_cardinality = unique_doc_count - C_cardinality;
-
-      class_sparse_vector &W = cat_profile.second.second;
-
-      /* The first term. If C_cardinality == 0, sum_w_in_C should be all zeros
-       * (i.e., the sparse vector is empty), and so, W should be empty too  */
-      if (C_cardinality == 0) {
-	W.clear();
-	continue; // W is already all 0. There is no point to do subtraction.
-      }
-
-      /* Adjusting P if P is < 0 */
-      if (P == -1) {
-	P = cat_profile.second.first.P_avg;
-      }
-      /* End of adjustment */
-
-#ifdef DONT_FOLLOW_ROI
-      const class_sparse_vector &sum_w_in_C = cat_profile.first.first.first;
-#else
-      const class_sparse_vector &sum_w_in_C = cat_profile.first.first;
-#endif
-      assign_weighted_sparse_vector(W, sum_w_in_C, 1.0 / C_cardinality);
-
-      /* The second term, the penalizing part. P is assumed to be >= 0.0 */
-      if (fpclassify(P) != FP_ZERO && not_C_cardinality != 0)
-	{
-	  double multiplier = P / static_cast<double>(not_C_cardinality);
-
-#ifdef DONT_FOLLOW_ROI
-	  const class_sparse_vector &adjustment
-	    = cat_profile.first.first.second;
-	  add_weighted_sparse_vector(W, adjustment, multiplier);
-#endif
-
-	  for (class_cat_profile_list::const_iterator j
-		 = cat_profile_list.begin();
-	       j != cat_profile_list.end();
-	       j++)
-	    {
-	      if (i == j) {
-		continue;
-	      }
-#ifdef DONT_FOLLOW_ROI
-	      const class_sparse_vector &sum_w_not_in_C
-		= j->second.first.first.first;
-#else
-	      const class_sparse_vector &sum_w_not_in_C
-		= j->second.first.first;
-#endif
-
-	      for (class_sparse_vector::const_iterator k
-		     = sum_w_not_in_C.begin();
-		   k != sum_w_not_in_C.end();
-		   k++)
-		{
-		  class_sparse_vector::iterator W_e = W.find(k->first);
-
-		  if (W_e == W.end()) { // entry is already zero
-		    continue;
-		  }
-
-		  W_e->second -= multiplier * k->second;
-
-		  /* If W_e->second is zero, it must be removed since this is
-		   * a sparse vector. And, due to floating-point error, the
-		   * zero can be a bit higher than the true zero.
-		   */
-		  if (W_e->second < FP_COMPARISON_DELTA) // max {0, ...
-		    {
-		      W.erase(W_e); // since W is a sparse vector
-		    }
-		} /* End of walking through sum_w_not_in_C entries */
-
-	    } /* End of walking through all the other categories */
-
-	} /* End of the second term, the penalizing part */
     }
+  }
 }
 
+static class_doc_names_in_C doc_names_in_C;
+static string word;
+static inline void partial_fn(char *f)
+{
+  word.append(f);
+}
+static inline void complete_fn(void)
+{
+  doc_names_in_C.insert(word);
+  word.clear();
+}
+
+static class_sparse_vector *w = NULL;
+
+static unsigned int ES_vector_size = 0;
+static class_unique_docs ES_in_C;
+static class_unique_docs ES_not_in_C;
+static inline void ES_vector_size_fn(unsigned int size)
+{
+  ES_vector_size = size;
+}
+static inline void ES_string_partial_fn(char *str)
+{
+  word.append(str);
+}
+static inline void ES_string_complete_fn(void)
+{
+  if (doc_names_in_C.find(word) == doc_names_in_C.end()) {
+    w = &ES_not_in_C[word];
+  } else {
+    w = &ES_in_C[word];
+  }
+  word.clear();
+}
+static inline void ES_offset_count_fn(unsigned int count)
+{
+}
+static inline void ES_double_fn(unsigned int index, double value)
+{
+  (*w)[index] = value;
+}
+static inline void ES_end_of_vector_fn(void)
+{
+}
+
+static unsigned int LS_min_ES_vector_size = 0;
+static class_unique_docs LS_min_ES_in_C;
+static class_unique_docs LS_min_ES_not_in_C;
+static inline void LS_min_ES_vector_size_fn(unsigned int size)
+{
+  LS_min_ES_vector_size = size;
+  if (ES_vector_size != LS_min_ES_vector_size) {
+    fatal_error("ES_vector_size (%u) != LS_min_ES_vector_size (%u)",
+		ES_vector_size, LS_min_ES_vector_size);
+  }
+}
+static inline void LS_min_ES_string_partial_fn(char *str)
+{
+  word.append(str);
+}
+static inline void LS_min_ES_string_complete_fn(void)
+{
+  if (doc_names_in_C.find(word) == doc_names_in_C.end()) {
+    w = &LS_min_ES_not_in_C[word];
+  } else {
+    w = &LS_min_ES_in_C[word];
+  }
+  word.clear();
+}
+static inline void LS_min_ES_offset_count_fn(unsigned int count)
+{
+}
+static inline void LS_min_ES_double_fn(unsigned int index, double value)
+{
+  (*w)[index] = value;
+}
+static inline void LS_min_ES_end_of_vector_fn(void)
+{
+}
+
+static const char *cat_name = NULL;
 static double tuning_init = -1;
-static const char *Th_estimation_file = NULL;
+static const char *ES_file = NULL;
 MAIN_BEGIN(
 "rocchio",
 "If input file is not given, stdin is read for input. Otherwise, the input\n"
@@ -603,20 +286,15 @@ MAIN_BEGIN(
 "w_i_j is a double datum (8 bytes) expressing the value of element i within\n"
 "sparse vector j.\n"
 "Logically, the file should come from a w_to_vector processing unit.\n"
-"The mandatory option -D specifies the name of DOC_CAT file containing the\n"
-"categories of M documents in the following format:\n"
-"DOC_NAME CAT_NAME\\n\n"
-"It is a fatal error if either DOC_NAME or CAT_NAME or both are empty string.\n"
-"To not generate the classifier of a category, omit the documents of the\n"
-"category from DOC_CAT file.\n"
-"If a document name in the input cannot be found in the DOC_CAT file, the\n"
-"document is considered to belong to an excluded category (the document is\n"
-"still taken into account to generate the classifiers of included categories)."
-"\n"
+"The mandatory option -D specifies the name of DOC file containing the\n"
+"name of the documents that belong to category C whose name is specified\n"
+"using the mandatory option -C, in the following format:\n"
+"DOC_NAME\\n\n"
 "Then, profiling is carried out using P specified by the mandatory option -B\n"
-"while the thresholds are estimated on all w vectors.\n"
+"while the thresholds are estimated on w vectors contained in the file\n"
+"specified using the mandatory option -U.\n"
 "This processing unit will calculate the profile vector W of the category C\n"
-"using the weight vectors of documents as follows:\n"
+"using the weight vectors of documents in the input stream as follows:\n"
 "W = <W_1, ..., W_N> and\n"
 "             1                               P\n"
 "W_i = max{0,---(S over d in C of [w^d_i]) - ----(S over e in ~C of [w^e_i])}\n"
@@ -647,21 +325,16 @@ MAIN_BEGIN(
 "                = 0.5 * (----- + -----)\n"
 "                         a + b   a + c\n"
 "This completes the construction of a binary classifier for category C.\n"
-"Because the aforementioned process is done for all K categories, the final\n"
-"result that is output by this processing unit is K binary classifiers in the\n"
-"form of K profile vectors and the corresponding thresholds in the following\n"
-"binary format whose endianness follows that of the host machine:\n"
+"Finally, the profile vector and the corresponding threshold is encoded in\n"
+"the following binary format whose endianness follows that of the host\n"
+"machine:\n"
 "+--------------------------------------------------------------------------+\n"
 "| Normal vector size (N) of the sparse vector in unsigned int (4 bytes)    |\n"
 "+------------+--+-+----+---+-+---+---+-------+-----+---+----------+--------+\n"
 "| cat_1_name |Q1|N|Th_1|N+1|P|N+2|BEP|off_1_1|w_1_1|...|off_(Q1-1)|w_(Q1-1)|\n"
 "+------------+--+-+----+---+-+---+---+-------+-----+---+----------+--------+\n"
-"|                                       ...                                |\n"
-"+------------+--+-+----+---+-+---+---+-------+-----+---+----------+--------+\n"
-"| cat_K_name |QK|N|Th_K|N+1|P|N+2|BEP|off_1_K|w_1_K|...|off_(QK-1)|w_(QK-1)|\n"
-"+------------+--+-+----+---+-+---+---+-------+-----+---+----------+--------+\n"
-"where N is the normal vector size of the sparse vector and cat names are all\n"
-"NULL-terminated strings.\n"
+"where N is the normal vector size of the sparse vector and cat name is\n"
+"a NULL-terminated string.\n"
 "Note that the threshold Th_i of each classifier is encoded as\n"
 "the first entry in the sparse vector with N as its offset.\n"
 "While the value of P_i is used to estimate Th_i is encoded as the second\n"
@@ -670,9 +343,13 @@ MAIN_BEGIN(
 "third entry with N+2 as its offset.\n"
 "The result is output to the given file if an output file is specified.\n"
 "Otherwise, stdout is used to output binary data.\n",
-"D:B:U:",
-"-D DOC_CAT_FILE -B VALUE_OF_P -U W_VECTORS_SET_FOR_TH_ESTIMATION\n",
+"C:D:B:U:",
+"-C CAT_NAME -D DOC_FILE -B VALUE_OF_P -U ES_FILE\n",
 0,
+case 'C':
+cat_name = optarg;
+break;
+
 case 'D':
 /* Allocating tokenizing buffer */
   buffer = static_cast<char *>(malloc(BUFFER_SIZE));
@@ -680,8 +357,8 @@ case 'D':
     fatal_error("Insufficient memory");
   }
 /* End of allocation */
-
-load_doc_cat_file(buffer, BUFFER_SIZE, optarg, doc_cat_fn);
+open_in_stream(optarg);
+tokenizer("\n", buffer, BUFFER_SIZE, partial_fn, complete_fn);
 break;
 
 case 'B':
@@ -694,23 +371,26 @@ if (!isfinite(tuning_init)) {
 break;
 
 case 'U':
-Th_estimation_file = optarg;
+ES_file = optarg;
 break;
 
 ) {
+  if (cat_name == NULL) {
+    fatal_error("-C must be specified (-h for help)");
+  }
   if (buffer == NULL) {
     fatal_error("-D must be specified (-h for help)");
   }
   if (tuning_init < 0) {
     fatal_error("-B must be specified (-h for help)");
   }
-  if (Th_estimation_file == NULL) {
+  if (ES_file == NULL) {
     fatal_error("-U must be specified (-h for help)");
   } else {
-    open_in_stream(Th_estimation_file);
-    parse_vector(buffer, BUFFER_SIZE, Th_vector_size_fn, Th_string_partial_fn,
-		 Th_string_complete_fn, Th_offset_count_fn, Th_double_fn,
-		 Th_end_of_vector_fn);
+    open_in_stream(ES_file);
+    parse_vector(buffer, BUFFER_SIZE, ES_vector_size_fn, ES_string_partial_fn,
+		 ES_string_complete_fn, ES_offset_count_fn, ES_double_fn,
+		 ES_end_of_vector_fn);
   }
 }
 
@@ -723,46 +403,18 @@ fatal_error("This only runs the test cases of " __FILE__);
 
 MAIN_INPUT_START
 {
-  parse_vector(buffer, BUFFER_SIZE, vector_size_fn, string_partial_fn,
-	       string_complete_fn, offset_count_fn, double_fn,
-	       end_of_vector_fn);
+  parse_vector(buffer, BUFFER_SIZE, LS_min_ES_vector_size_fn,
+	       LS_min_ES_string_partial_fn, LS_min_ES_string_complete_fn,
+	       LS_min_ES_offset_count_fn, LS_min_ES_double_fn,
+	       LS_min_ES_end_of_vector_fn);
 }
-MAIN_INPUT_END /* All w vectors are stored in LS */
+MAIN_INPUT_END
 
-construct_cat_profile_list(cat_profile_list(LS), cat_doc_list(LS));
-#ifdef DONT_FOLLOW_ROI
-prepare_Ws(cat_profile_list(LS), cat_doc_list(LS), multicats_docs_list(LS));
-#else
-prepare_Ws(cat_profile_list(LS), cat_doc_list(LS));
-#endif
-
-for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-     i != cat_profile_list(LS).end();
-     i++)
-  {
-    if (i->first.empty()) { // Don't consider excluded categories
-      continue;
-    }
-
-    i->second.second.first.P_avg = tuning_init;
-  }
-
-construct_Ws(cat_profile_list(LS), unique_doc_count(LS), -1);
-
-for (class_cat_profile_list::iterator i = cat_profile_list(LS).begin();
-     i != cat_profile_list(LS).end();
-     i++)
-  {
-    if (i->first.empty()) { // Don't consider excluded categories
-      continue;
-    }
-
-    class_classifier &cat_classifier = i->second.second;
-    class_W_property &prop = cat_classifier.first;
-    prop.BEP = estimate_Th(unique_docs(Th_estimation_set), cat_doc_list(LS),
-			   i->first, i->second.second);
-  }
-
-output_classifiers(cat_profile_list(LS));
+class_sparse_vector W;
+construct_Ws(W, tuning_init, LS_min_ES_in_C, LS_min_ES_not_in_C);
+double Th = numeric_limits<double>::quiet_NaN();
+double BEP = estimate_Th(ES_in_C, ES_not_in_C, string(cat_name), W,
+			 LS_min_ES_in_C.empty(), &Th);
+output_classifier(cat_name, LS_min_ES_vector_size, W, Th, tuning_init, BEP);
 
 MAIN_END

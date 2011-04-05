@@ -18,27 +18,11 @@
 #ifndef ROCCHIO_HPP
 #define ROCCHIO_HPP
 
-#include <list>
-#include <vector>
-#include "utility_doc_cat_list.hpp"
+#include <string>
 #include "utility_vector.hpp"
 
 using namespace std;
 
-typedef pair<class_sparse_vector /* w */,
-	     class_set_of_cats* /* gold standard */> class_w_cats;
-typedef list<class_w_cats> class_w_cats_list;
-
-typedef class_w_cats * class_w_cats_ptr;
-typedef vector<class_w_cats_ptr> class_unique_docs_for_estimating_Th;
-
-#ifdef BE_VERBOSE
-typedef unordered_map<class_sparse_vector *, string> class_w_to_doc_name;
-static class_w_to_doc_name w_to_doc_name;
-typedef unordered_set<class_sparse_vector *> class_docs;
-#else
-typedef vector<class_sparse_vector *> class_docs;
-#endif
-typedef unordered_map<string, class_docs> class_cat_doc_list;
+typedef unordered_map<string, class_sparse_vector> class_unique_docs;
 
 #endif /* ROCCHIO_HPP */

@@ -36,8 +36,8 @@ class class_d_list_entry {
 public:
   unsigned int first;
   unsigned int second;
-  vector <string *> first_docs;
-  vector <string *> second_docs;
+  vector <const string *> first_docs;
+  vector <const string *> second_docs;
   class_d_list_entry() {
     first = 0;
     second = 0;
@@ -65,7 +65,7 @@ static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
 
   flockfile(stderr);
   verbose_msg("\t C = {");
-  for (vector<string *>::const_iterator x = e.first_docs.begin();
+  for (vector<const string *>::const_iterator x = e.first_docs.begin();
        x != e.first_docs.end();
        x++)
     {
@@ -76,7 +76,7 @@ static inline void print_bit(const class_d_list::const_reverse_iterator &bit,
 
   flockfile(stderr);
   verbose_msg("\t~C = {");
-  for (vector<string *>::const_iterator x = e.second_docs.begin();
+  for (vector<const string *>::const_iterator x = e.second_docs.begin();
        x != e.second_docs.end();
        x++)
     {
@@ -332,17 +332,14 @@ static inline void test_do_threshold_estimation(void)
 #endif /* NDEBUG of test_do_threshold_estimation() */
 
 /**
- * It is a programming error if cat_doc_list does not contain target_cat_name.
- *
- * @param unique_docs the docs used to estimate the threshold
- * @param cat_doc_list is used to check for category emptiness
- *
  * @return interpolated BEP associated with the estimated threshold
  */
-static inline double estimate_Th(class_unique_docs_for_estimating_Th unique_docs,
-				 const class_cat_doc_list &cat_doc_list,
+static inline double estimate_Th(const class_unique_docs ES_in_C,
+				 const class_unique_docs ES_not_in_C,
 				 const string &target_cat_name,
-				 class_classifier &target_cat_classifier)
+				 const class_sparse_vector &W,
+				 bool cat_is_empty,
+				 double *Th)
 {
 /*
 The threshold estimation will use the BEP method so as to make the experiment results more comparable with those of the other researchers.
@@ -407,9 +404,7 @@ The candidate threshold then uses the dot product value of the right-most bit 1 
 For the case where all bits are zero, Th is set to +infinity (although actually any value larger than 1 suffices) because the classifier learns from the training set that the category is empty. This is also the case when no bit exists like in Example 4.
 */
 
-  class_cat_doc_list::const_iterator t = cat_doc_list.find(target_cat_name);
-
-  if (t == cat_doc_list.end() || t->second.empty()) {
+  if (cat_is_empty) {
     /* Cat has no doc.
      * This corresponds to the set of cases {0, 00, 000, ...}
      * So, the action mentioned in the above explanation in the case where all
@@ -419,7 +414,7 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
     verbose_msg("%s has no doc (no threshold estimation carried out)\n",
 		target_cat_name.c_str());
 #endif
-    target_cat_classifier.first.threshold = numeric_limits<double>::infinity();
+    *Th = numeric_limits<double>::infinity();
     return 1; // precision and recall are trivially 1 when |C| = 0 and b = 0
   }
 
@@ -427,37 +422,27 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
 
   /* Constructing the bits */
   unsigned int cat_doc_count = 0;
-  for (class_unique_docs_for_estimating_Th::const_iterator i
-	 = unique_docs.begin();
-       i != unique_docs.end();
-       i++)
-    {
-      double dot_prod
-	= dot_product_sparse_vector((*i)->first, target_cat_classifier.second);
-      class_d_list_entry &entry = d_list[dot_prod];
+  const_foreach(class_unique_docs, ES_in_C, d) {
+    double dot_prod = dot_product_sparse_vector(d->second, W);
+    class_d_list_entry &entry = d_list[dot_prod];
 
-      class_set_of_cats *doc_GS = (*i)->second;
-      int bit_belongs_to_target_cat = (doc_GS != NULL // doc is in excluded cat
-				       && (doc_GS->find(target_cat_name)
-					   != doc_GS->end()));
-
-      if (bit_belongs_to_target_cat) {
-
-	cat_doc_count++;
-	entry.first++;
+    cat_doc_count++;
+    entry.first++;
 
 #ifdef BE_VERBOSE
-	entry.first_docs.push_back(&w_to_doc_name[&(*i)->first]);
+    entry.first_docs.push_back(&d->first);
 #endif
-      } else {
+  }
+  const_foreach(class_unique_docs, ES_not_in_C, d) {
+    double dot_prod = dot_product_sparse_vector(d->second, W);
+    class_d_list_entry &entry = d_list[dot_prod];
 
-	entry.second++;
+    entry.second++;
 
 #ifdef BE_VERBOSE
-	entry.second_docs.push_back(&w_to_doc_name[&(*i)->first]);
+    entry.second_docs.push_back(&d->first);
 #endif
-      }
-    }
+  }
   /* End of bits construction */
 
 #ifdef BE_VERBOSE
@@ -465,12 +450,10 @@ For the case where all bits are zero, Th is set to +infinity (although actually 
 	      d_list.size());
   verbose_msg("Threshold estimation on %s (c = %u = |C|, |~C| = %u)\n",
 	      target_cat_name.c_str(), cat_doc_count,
-	      unique_docs.size() - cat_doc_count);
+	      ES_in_C.size() + ES_not_in_C.size() - cat_doc_count);
 #endif
   
-  double interpolated_BEP
-    = do_threshold_estimation(cat_doc_count, d_list,
-			      target_cat_classifier.first.threshold);
+  double interpolated_BEP = do_threshold_estimation(cat_doc_count, d_list, *Th);
 
 #ifdef BE_VERBOSE
   verbose_msg("Interpolated BEP = %f\n", interpolated_BEP);
