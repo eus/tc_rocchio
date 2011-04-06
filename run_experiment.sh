@@ -109,7 +109,6 @@ various_ES_percentages='30 40 50 60'
 valset_count=20
 valset_percentage=30
 various_Ps='0.25 1'
-largest_P_in_various_Ps=1
 reported_cats='earn acq money-fx grain crude trade interest ship wheat corn'
 # End of parameters that alters how the experiment is conducted
 
@@ -302,6 +301,7 @@ function run_crossval_various_ES_percentages {
         done
 
         # Putting in the statistics
+	echo "$title" | merge_in_statistics >> $performance_result
         cat $tmp_performance_file | merge_in_statistics >> $performance_result
         # End of extracting performance data
     done
@@ -339,8 +339,8 @@ function run_crossval_noES {
 	    command+=" -l"
 	    command+=" -E 0"
 	    command+=" -B $P"
-	    command+=" -I "$((largest_P_in_various_Ps * 2))
-	    command+=" -M "$((largest_P_in_various_Ps + 1))
+	    command+=" -I "$(echo $P + 2 | bc)
+	    command+=" -M "$(echo $P + 1 | bc)
 	    command+=" -R $cross_rseed"
 	    command+=" -D"
 	    command+=" -V $valset_percentage"
@@ -392,6 +392,7 @@ function run_crossval_noES {
         done
 
         # Putting in the statistics
+	echo "$title" | merge_in_statistics >> $performance_result
         cat $tmp_performance_file | merge_in_statistics >> $performance_result
         # End of extracting performance data
     done
@@ -477,6 +478,7 @@ function run_various_ES_percentages {
         done
 
         # Putting in the statistics
+	echo "$title" | merge_in_statistics >> $performance_result
         cat $tmp_performance_file | merge_in_statistics >> $performance_result
         # End of extracting performance data
     done
@@ -509,8 +511,8 @@ function run_noES {
 	    command+=" -l"
 	    command+=" -E 0"
 	    command+=" -B $P"
-	    command+=" -I "$((largest_P_in_various_Ps * 2))
-	    command+=" -M "$((largest_P_in_various_Ps + 1))
+	    command+=" -I "$(echo $P + 2 | bc)
+	    command+=" -M "$(echo $P + 1 | bc)
 	    command+=" -D"
 	    # End of constructing the command string
 
@@ -550,6 +552,7 @@ function run_noES {
 	per_cat_trailer >> $performance_result
 
         # Putting in the statistics
+	echo "$title" | merge_in_statistics >> $performance_result
         cat $tmp_performance_file | merge_in_statistics >> $performance_result
         # End of extracting performance data
     done
@@ -559,7 +562,7 @@ function run_noES {
 
 # Raw material preparation
 echo "[Preparing raw material] `date`"
-echo 'Tokenization and TF generation' > $timing_result
+echo 'Tokenization and TF generation' >> $timing_result
 command="$driver_exec_file"
 command+=" -t $reuters_training_dir"
 command+=" -s $reuters_testing_dir"
@@ -591,46 +594,46 @@ timing_statistics "Tokenization and TF generation" $start $end >> $timing_result
 # End of raw material preparation
 
 # 1. dont_follow_roi
-# 1.1 dont_follow_roi.crossval.various_ES_percentages
-echo 'dont_follow_roi.crossval.various_ES_percentages' \
-    | tee -a $timing_result > $performance_result
-run_crossval_various_ES_percentages "dont_follow_roi" $dont_follow_roi_exec_dir
-
-# 1.2 dont_follow_roi.crossval.noES
-echo 'dont_follow_roi.crossval.noES' \
-    | tee -a $timing_result > $performance_result
-run_crossval_noES "dont_follow_roi" $dont_follow_roi_exec_dir
-
-# 1.3 dont_follow_roi.various_ES_percentages
+# 1.1 dont_follow_roi.noES
+echo 'dont_follow_roi.noES' \
+    | tee -a $timing_result >> $performance_result
+run_noES "dont_follow_roi" $dont_follow_roi_exec_dir
+exit 0
+# 1.2 dont_follow_roi.various_ES_percentages
 echo 'dont_follow_roi.various_ES_percentages' \
-    | tee -a $timing_result > $performance_result
+    | tee -a $timing_result >> $performance_result
 run_various_ES_percentages "dont_follow_roi" $dont_follow_roi_exec_dir
 
-# 1.4 dont_follow_roi.noES
-echo 'dont_follow_roi.noES' \
-    | tee -a $timing_result > $performance_result
-run_noES "dont_follow_roi" $dont_follow_roi_exec_dir
+# 1.3 dont_follow_roi.crossval.noES
+echo 'dont_follow_roi.crossval.noES' \
+    | tee -a $timing_result >> $performance_result
+run_crossval_noES "dont_follow_roi" $dont_follow_roi_exec_dir
+
+# 1.4 dont_follow_roi.crossval.various_ES_percentages
+echo 'dont_follow_roi.crossval.various_ES_percentages' \
+    | tee -a $timing_result >> $performance_result
+run_crossval_various_ES_percentages "dont_follow_roi" $dont_follow_roi_exec_dir
 
 # 2. follow_roi
-# 2.1 follow_roi.crossval.various_ES_percentages
-echo 'follow_roi.crossval.various_ES_percentages' \
-    | tee -a $timing_result > $performance_result
-run_crossval_various_ES_percentages "follow_roi" $follow_roi_exec_dir
+# 2.1 follow_roi.noES
+echo 'follow_roi.noES' \
+    | tee -a $timing_result >> $performance_result
+run_noES "follow_roi" $follow_roi_exec_dir
 
-# 2.2 follow_roi.crossval.noES
-echo 'follow_roi.crossval.noES' \
-    | tee -a $timing_result > $performance_result
-run_crossval_noES "follow_roi" $follow_roi_exec_dir
-
-# 2.3 follow_roi.various_ES_percentages
+# 2.2 follow_roi.various_ES_percentages
 echo 'follow_roi.various_ES_percentages' \
-    | tee -a $timing_result > $performance_result
+    | tee -a $timing_result >> $performance_result
 run_various_ES_percentages "follow_roi" $follow_roi_exec_dir
 
-# 2.4 follow_roi.noES
-echo 'follow_roi.noES' \
-    | tee -a $timing_result > $performance_result
-run_noES "follow_roi" $follow_roi_exec_dir
+# 2.3 follow_roi.crossval.noES
+echo 'follow_roi.crossval.noES' \
+    | tee -a $timing_result >> $performance_result
+run_crossval_noES "follow_roi" $follow_roi_exec_dir
+
+# 2.4 follow_roi.crossval.various_ES_percentages
+echo 'follow_roi.crossval.various_ES_percentages' \
+    | tee -a $timing_result >> $performance_result
+run_crossval_various_ES_percentages "follow_roi" $follow_roi_exec_dir
 
 # End of experiment
 
