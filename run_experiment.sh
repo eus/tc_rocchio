@@ -145,17 +145,27 @@ function timing_statistics {
     echo -e '\t\t\t\t\t'$1'\t=SUM($B$'$2':$B$'$3')\t=G'$(($3 + 1))' / 60'
 }
 
-function global_header {
-    echo 'Global Performance'
-    echo -n 'nth cross-validation set'
+function global_subheader {
     echo -ne '\tMacro Average\t\tMicro Average'
     echo -e '\t\tMicro Average f1\tAverage BEP'
     echo -e '\tPrecision\tRecall\tPrecision\tRecall'
 }
 
+function global_header {
+    echo 'Global Performance'
+    echo -n 'nth cross-validation set'
+    global_subheader
+}
+
 # $1 result directory
 function get_global_performance {
     tail -n 1 $1/perf_measure.txt
+}
+
+# $1 row number
+function global_f1 {
+    echo -n 'Global'
+    echo -e '\t=$F$'$1
 }
 
 # $1 start
@@ -170,13 +180,25 @@ function global_trailer {
     echo ''
 }
 
+function per_cat_subheader {
+    echo -e '\tcat\ta\tb\tc\tPrecision\tRecall\tf1\tBEP'
+}
+
 function per_cat_header {
     echo "Performance on Category $cat"
-    echo 'nth cross-validation set\tcat\ta\tb\tc\tPrecision\tRecall\tf1\tBEP'
+    echo -n 'nth cross-validation set'
+    per_cat_subheader
 }
 
 function get_per_cat_performance {
     grep -m 1 -- ^$1 $2/perf_measure.txt
+}
+
+# $1 cat_name
+# $2 row number
+function per_cat_f1 {
+    echo -n ''$1
+    echo -e '\t=$H$'$2
 }
 
 # $1 cat_name
@@ -304,7 +326,6 @@ function run_crossval_noES {
 
             # The following rseeds must be obtained in this order
             cross_rseed=$(next_rseed)
-            ES_rseed=$(next_rseed)
             # End of obtaining rseeds
 
 	    # Construct the command string
@@ -461,6 +482,79 @@ function run_various_ES_percentages {
     done
 }
 
+# $1 dont_follow_roi/follow_roi
+# $2 exec_dir
+function run_noES {
+    echo "[Running $1.noES] `date`"
+    for P in $various_Ps; do
+	title="$1.P.$P"
+        echo "$title" | tee -a $timing_result >> $performance_result
+
+        final_result_dir='$result_base_dir'
+        final_result_dir+='/result.$1.P.$P'
+
+            echo "P=$P `date`"
+            mkdir $result_base_dir/result/
+            ln -s ../raw_data/training/ $result_base_dir/result/
+            ln -s ../raw_data/testing $result_base_dir/result
+
+	    # Construct the command string
+            command="$driver_exec_file"
+	    command+=" -x $2"
+	    command+=" -r $result_base_dir/result"
+	    command+=" -t $reuters_training_dir"
+	    command+=" -s $reuters_testing_dir"
+	    command+=" -a 2"
+	    command+=" -J $thread_count"
+	    command+=" -l"
+	    command+=" -E 0"
+	    command+=" -B $P"
+	    command+=" -I "$((largest_P_in_various_Ps * 2))
+	    command+=" -M "$((largest_P_in_various_Ps + 1))
+	    command+=" -D"
+	    # End of constructing the command string
+
+	    echo "$command"
+	    eval $command 2>&1 | tee $tmp_timing_file
+
+            # Extracting timing information
+            echo "$command" >> $timing_result
+            extract_timings $tmp_timing_file >> $timing_result
+	    end=`cat $timing_result | wc -l`
+	    start=$((end - 10 + 1))
+	    timing_statistics $title $start $end >> $timing_result
+            # End of extracting timing information
+
+            mv $result_base_dir/result `eval echo $final_result_dir`
+
+        # Extract performance data
+        rm -f $tmp_performance_file
+
+        # Global performance
+	global_subheader >> $performance_result
+        get_global_performance `eval echo $final_result_dir` \
+            | sed -e 's%.*%\t&%' \
+	    >> $performance_result
+	global_f1 `cat $performance_result | wc -l` >> $tmp_performance_file
+        global_trailer >> $performance_result
+
+        # Per category performance
+	per_cat_subheader >> $performance_result
+        for cat in $reported_cats; do
+	    get_per_cat_performance $cat `eval echo $final_result_dir` \
+                | sed -e 's%.*%\t&%' \
+                >> $performance_result
+	    per_cat_f1 $cat `cat $performance_result | wc -l` \
+		>> $tmp_performance_file
+        done
+	per_cat_trailer >> $performance_result
+
+        # Putting in the statistics
+        cat $tmp_performance_file | merge_in_statistics >> $performance_result
+        # End of extracting performance data
+    done
+}
+
 # Begin experiment
 
 # Raw material preparation
@@ -512,6 +606,11 @@ echo 'dont_follow_roi.various_ES_percentages' \
     | tee -a $timing_result > $performance_result
 run_various_ES_percentages "dont_follow_roi" $dont_follow_roi_exec_dir
 
+# 1.4 dont_follow_roi.noES
+echo 'dont_follow_roi.noES' \
+    | tee -a $timing_result > $performance_result
+run_noES "dont_follow_roi" $dont_follow_roi_exec_dir
+
 # 2. follow_roi
 # 2.1 follow_roi.crossval.various_ES_percentages
 echo 'follow_roi.crossval.various_ES_percentages' \
@@ -528,11 +627,22 @@ echo 'follow_roi.various_ES_percentages' \
     | tee -a $timing_result > $performance_result
 run_various_ES_percentages "follow_roi" $follow_roi_exec_dir
 
+# 2.4 follow_roi.noES
+echo 'follow_roi.noES' \
+    | tee -a $timing_result > $performance_result
+run_noES "follow_roi" $follow_roi_exec_dir
+
 # End of experiment
 
 # Package the experiment result
 cd $result_base_dir
 echo -e "\n[PACKAGING RESULT]"
+echo -n "Tokenization and TF data"
+echo -n " (`date`)... "
+find raw_data -print0 \
+    | cpio -o0 \
+    | xz --best > tokenization_and_TF_calculation_result-with_stop_list.cpio.xz
+
 echo -n "dont_follow_roi.crossval.various_ES_percentages"
 echo -n " (`date`)... "
 find result.dont_follow_roi.crossval.*.ES_percentage.* -print0 \
@@ -551,6 +661,12 @@ find result.dont_follow_roi.*.ES_percentage.* -print0 \
     | cpio -o0 \
     | xz --best > result.dont_follow_roi.various_ES_percentages.cpio.xz
 
+echo -n "dont_follow_roi.noES"
+echo -n " (`date`)... "
+find result.dont_follow_roi.P.* -print0 \
+    | cpio -o0 \
+    | xz --best > result.dont_follow_roi.noES.cpio.xz
+
 echo -n "follow_roi.crossval.various_ES_percentages"
 echo -n " (`date`)... "
 find result.follow_roi.crossval.*.ES_percentage.* -print0 \
@@ -568,4 +684,10 @@ echo -n " (`date`)... "
 find result.follow_roi.*.ES_percentage.* -print0 \
     | cpio -o0 \
     | xz --best > result.follow_roi.various_ES_percentages.cpio.xz
+
+echo -n "follow_roi.noES"
+echo -n " (`date`)... "
+find result.follow_roi.P.* -print0 \
+    | cpio -o0 \
+    | xz --best > result.follow_roi.noES.cpio.xz
 # End of packaging
