@@ -376,6 +376,91 @@ function run_crossval_noES {
     done
 }
 
+# $1 dont_follow_roi/follow_roi
+# $2 exec_dir
+function run_various_ES_percentages {
+    echo "[Running $1.various_ES_percentages] `date`"
+    for percentage in $various_ES_percentages; do
+	title="$1.ES_percentage.$percentage"
+        echo "$title" | tee -a $timing_result >> $performance_result
+
+        final_result_dir='$result_base_dir'
+        final_result_dir+='/result.$1.$i.ES_percentage.$percentage'
+
+        for ((i=1; i <= $valset_count; i++)); do
+            echo "i=$i percentage=$percentage `date`"
+            mkdir $result_base_dir/result/
+            ln -s ../raw_data/training/ $result_base_dir/result/
+            ln -s ../raw_data/testing $result_base_dir/result
+
+            # The following rseeds must be obtained in this order
+            ES_rseed=$(next_rseed)
+            # End of obtaining rseeds
+
+	    # Construct the command string
+            command="$driver_exec_file"
+	    command+=" -x $2"
+	    command+=" -r $result_base_dir/result"
+	    command+=" -t $reuters_training_dir"
+	    command+=" -s $reuters_testing_dir"
+	    command+=" -a 2"
+	    command+=" -J $thread_count"
+	    command+=" -l"
+	    command+=" -P $percentage"
+	    command+=" -S $ES_rseed"
+	    command+=" -D"
+	    # End of constructing the command string
+
+	    echo "$command"
+	    eval $command 2>&1 | tee $tmp_timing_file
+
+            # Extracting timing information
+            extract_rseeds $tmp_timing_file >> $rseeds_out_file
+            echo "$command" >> $timing_result
+            extract_timings $tmp_timing_file >> $timing_result
+	    end=`cat $timing_result | wc -l`
+	    start=$((end - 10 + 1))
+	    timing_statistics $title $start $end >> $timing_result
+            # End of extracting timing information
+
+            mv $result_base_dir/result `eval echo $final_result_dir`
+        done
+
+        # Extract performance data
+        rm -f $tmp_performance_file
+
+        # Global performance
+	global_header >> $performance_result
+        for ((i=1; i <= $valset_count; i++)); do
+            get_global_performance `eval echo $final_result_dir` \
+                | sed -e 's%.*%'$i'\t&%' \
+                >> $performance_result
+        done
+        end=`cat $performance_result | wc -l`
+        start=$((end - valset_count + 1))
+	global_statistics $start $end >> $tmp_performance_file
+        global_trailer >> $performance_result
+
+        # Per category performance
+        for cat in $reported_cats; do
+	    per_cat_header >> $performance_result
+            for ((i=1; i <= $valset_count; i++)); do
+		get_per_cat_performance $cat `eval echo $final_result_dir` \
+                    | sed -e 's%.*%'$i'\t&%' \
+                    >> $performance_result
+            done
+            end=`cat $performance_result | wc -l`
+            start=$((end - valset_count + 1))
+	    per_cat_statistics $cat $start $end >> $tmp_performance_file
+	    per_cat_trailer >> $performance_result
+        done
+
+        # Putting in the statistics
+        cat $tmp_performance_file | merge_in_statistics >> $performance_result
+        # End of extracting performance data
+    done
+}
+
 # Begin experiment
 
 # Raw material preparation
@@ -422,6 +507,11 @@ echo 'dont_follow_roi.crossval.noES' \
     | tee -a $timing_result > $performance_result
 run_crossval_noES "dont_follow_roi" $dont_follow_roi_exec_dir
 
+# 1.3 dont_follow_roi.various_ES_percentages
+echo 'dont_follow_roi.various_ES_percentages' \
+    | tee -a $timing_result > $performance_result
+run_various_ES_percentages "dont_follow_roi" $dont_follow_roi_exec_dir
+
 # 2. follow_roi
 # 2.1 follow_roi.crossval.various_ES_percentages
 echo 'follow_roi.crossval.various_ES_percentages' \
@@ -432,6 +522,11 @@ run_crossval_various_ES_percentages "follow_roi" $follow_roi_exec_dir
 echo 'follow_roi.crossval.noES' \
     | tee -a $timing_result > $performance_result
 run_crossval_noES "follow_roi" $follow_roi_exec_dir
+
+# 2.3 follow_roi.various_ES_percentages
+echo 'follow_roi.various_ES_percentages' \
+    | tee -a $timing_result > $performance_result
+run_various_ES_percentages "follow_roi" $follow_roi_exec_dir
 
 # End of experiment
 
@@ -450,6 +545,12 @@ find result.dont_follow_roi.crossval.*.P.* -print0 \
     | cpio -o0 \
     | xz --best > result.dont_follow_roi.crossval.noES.cpio.xz
 
+echo -n "dont_follow_roi.various_ES_percentages"
+echo -n " (`date`)... "
+find result.dont_follow_roi.*.ES_percentage.* -print0 \
+    | cpio -o0 \
+    | xz --best > result.dont_follow_roi.various_ES_percentages.cpio.xz
+
 echo -n "follow_roi.crossval.various_ES_percentages"
 echo -n " (`date`)... "
 find result.follow_roi.crossval.*.ES_percentage.* -print0 \
@@ -461,4 +562,10 @@ echo -n " (`date`)... "
 find result.follow_roi.crossval.*.P.* -print0 \
     | cpio -o0 \
     | xz --best > result.follow_roi.crossval.noES.cpio.xz
+
+echo -n "follow_roi.various_ES_percentages"
+echo -n " (`date`)... "
+find result.follow_roi.*.ES_percentage.* -print0 \
+    | cpio -o0 \
+    | xz --best > result.follow_roi.various_ES_percentages.cpio.xz
 # End of packaging
