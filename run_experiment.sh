@@ -55,6 +55,7 @@ TC_ROCCHIO_EXEC_DIR is expected to contain two directories: dont_follow_roi and
 If the result of a previous run would like to be reproduced, specify the option
     -R and give as its argument the path to the file
     RESULT_BASE_DIR/rseeds.output produced in the previous run.
+To pause the experiment, create a file named PAUSE in RESULT_BASE_DIR.
 
 EOF
 	    exit 0;;
@@ -216,6 +217,14 @@ function merge_in_statistics {
     sed -e 's%.*%\t\t\t\t\t\t\t\t\t\t&%'
 }
 
+function pause_experiment {
+    if [ -f $result_base_dir/PAUSE ]; then
+	echo "[PAUSED] Experiment is being paused, press ENTER to continue"
+	read
+	rm $result_base_dir/PAUSE
+    fi
+}
+
 # $1 dont_follow_roi/follow_roi
 # $2 exec_dir
 function run_crossval_various_ES_percentages {
@@ -269,6 +278,8 @@ function run_crossval_various_ES_percentages {
 
             rm -r $result_base_dir/result/crossval # due to being reproducible
             mv $result_base_dir/result `eval echo $final_result_dir`
+
+	    pause_experiment
         done
 
         # Extract performance data
@@ -360,6 +371,8 @@ function run_crossval_noES {
 
             rm -r $result_base_dir/result/crossval # due to being reproducible
             mv $result_base_dir/result `eval echo $final_result_dir`
+
+	    pause_experiment
         done
 
         # Extract performance data
@@ -447,6 +460,8 @@ function run_various_ES_percentages {
             # End of extracting timing information
 
             mv $result_base_dir/result `eval echo $final_result_dir`
+
+	    pause_experiment
         done
 
         # Extract performance data
@@ -529,6 +544,8 @@ function run_noES {
             # End of extracting timing information
 
             mv $result_base_dir/result `eval echo $final_result_dir`
+
+	    pause_experiment
 
         # Extract performance data
         rm -f $tmp_performance_file
