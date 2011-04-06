@@ -93,7 +93,6 @@ reuters_testing_dir=$reuters_corpus_dir/test
 
 dont_follow_roi_exec_dir=$tc_rocchio_exec_dir/dont_follow_roi
 follow_roi_exec_dir=$tc_rocchio_exec_dir/follow_roi
-driver_exec_file=$dont_follow_roi_exec_dir/driver.sh
 
 rseeds_out_file=$result_base_dir/rseeds.output
 timing_result=$result_base_dir/timing.csv
@@ -230,7 +229,7 @@ function run_crossval_various_ES_percentages {
 
         for ((i=1; i <= $valset_count; i++)); do
             echo "i=$i percentage=$percentage `date`"
-            mkdir $result_base_dir/result/
+            mkdir -p $result_base_dir/result/BEP_history
             ln -s ../raw_data/training/ $result_base_dir/result/
             ln -s ../raw_data/testing $result_base_dir/result
 
@@ -240,7 +239,7 @@ function run_crossval_various_ES_percentages {
             # End of obtaining rseeds
 
 	    # Construct the command string
-            command="$driver_exec_file"
+            command="$2/driver.sh"
 	    command+=" -x $2"
 	    command+=" -r $result_base_dir/result"
 	    command+=" -t $reuters_training_dir"
@@ -253,6 +252,7 @@ function run_crossval_various_ES_percentages {
 	    command+=" -R $cross_rseed"
 	    command+=" -D"
 	    command+=" -V $valset_percentage"
+	    command+=" -H $result_base_dir/result/BEP_history/history"
 	    # End of constructing the command string
 
 	    echo "$command"
@@ -329,7 +329,7 @@ function run_crossval_noES {
             # End of obtaining rseeds
 
 	    # Construct the command string
-            command="$driver_exec_file"
+            command="$2/driver.sh"
 	    command+=" -x $2"
 	    command+=" -r $result_base_dir/result"
 	    command+=" -t $reuters_training_dir"
@@ -411,7 +411,7 @@ function run_various_ES_percentages {
 
         for ((i=1; i <= $valset_count; i++)); do
             echo "i=$i percentage=$percentage `date`"
-            mkdir $result_base_dir/result/
+            mkdir -p $result_base_dir/result/BEP_history
             ln -s ../raw_data/training/ $result_base_dir/result/
             ln -s ../raw_data/testing $result_base_dir/result
 
@@ -420,7 +420,7 @@ function run_various_ES_percentages {
             # End of obtaining rseeds
 
 	    # Construct the command string
-            command="$driver_exec_file"
+            command="$2/driver.sh"
 	    command+=" -x $2"
 	    command+=" -r $result_base_dir/result"
 	    command+=" -t $reuters_training_dir"
@@ -431,6 +431,7 @@ function run_various_ES_percentages {
 	    command+=" -P $percentage"
 	    command+=" -S $ES_rseed"
 	    command+=" -D"
+	    command+=" -H $result_base_dir/result/BEP_history/history"
 	    # End of constructing the command string
 
 	    echo "$command"
@@ -501,7 +502,7 @@ function run_noES {
             ln -s ../raw_data/testing $result_base_dir/result
 
 	    # Construct the command string
-            command="$driver_exec_file"
+            command="$2/driver.sh"
 	    command+=" -x $2"
 	    command+=" -r $result_base_dir/result"
 	    command+=" -t $reuters_training_dir"
@@ -560,10 +561,11 @@ function run_noES {
 
 # Begin experiment
 
-# Raw material preparation
+# Raw material preparation (Step 0, Step 1 and Step 6 must be the same for both
+# dont_follow_roi and follow_roi)
 echo "[Preparing raw material] `date`"
 echo 'Tokenization and TF generation' >> $timing_result
-command="$driver_exec_file"
+command="$dont_follow_roi_exec_dir/driver.sh"
 command+=" -t $reuters_training_dir"
 command+=" -s $reuters_testing_dir"
 command+=" -x $dont_follow_roi_exec_dir"
@@ -576,7 +578,7 @@ echo "$command"
 eval $command 2>&1 | tee $tmp_timing_file
 extract_timings $tmp_timing_file >> $timing_result
 echo "$command" >> $timing_result
-command="$driver_exec_file"
+command="$dont_follow_roi_exec_dir/driver.sh"
 command+=" -t $reuters_training_dir"
 command+=" -s $reuters_testing_dir"
 command+=" -x $dont_follow_roi_exec_dir"
@@ -598,7 +600,7 @@ timing_statistics "Tokenization and TF generation" $start $end >> $timing_result
 echo 'dont_follow_roi.noES' \
     | tee -a $timing_result >> $performance_result
 run_noES "dont_follow_roi" $dont_follow_roi_exec_dir
-exit 0
+
 # 1.2 dont_follow_roi.various_ES_percentages
 echo 'dont_follow_roi.various_ES_percentages' \
     | tee -a $timing_result >> $performance_result
