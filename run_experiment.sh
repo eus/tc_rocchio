@@ -679,7 +679,7 @@ find result.dont_follow_roi.crossval.*.P.* -print0 \
 
 echo -n "dont_follow_roi.various_ES_percentages"
 echo -n " (`date`)... "
-find result.dont_follow_roi.*.ES_percentage.* -print0 \
+find result.dont_follow_roi.[0-9]*.ES_percentage.* -print0 \
     | cpio -o0 \
     | xz --best > result.dont_follow_roi.various_ES_percentages.cpio.xz
 
@@ -703,7 +703,7 @@ find result.follow_roi.crossval.*.P.* -print0 \
 
 echo -n "follow_roi.various_ES_percentages"
 echo -n " (`date`)... "
-find result.follow_roi.*.ES_percentage.* -print0 \
+find result.follow_roi.[0-9]*.ES_percentage.* -print0 \
     | cpio -o0 \
     | xz --best > result.follow_roi.various_ES_percentages.cpio.xz
 
