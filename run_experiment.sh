@@ -49,9 +49,9 @@ Do not use any path name having shell special characters or whitespaces.
 REUTERS_CORPUS_DIR is expected to contain the extraction result of
     http://disi.unitn.it/moschitti/corpora/Reuters21578-Apte-90Cat.tar.gz
 TC_ROCCHIO_EXEC_DIR is expected to contain two directories: dont_follow_roi and
-    follow_roi. The first directory should have executables compiled with `make
+    follow_roi. The first directory should have executables compiled with \`make
     DONT_FOLLOW_ROI=enabled' while the second directory should have executables
-    compiled with just `make'.
+    compiled with just \`make'.
 If the result of a previous run would like to be reproduced, specify the option
     -R and give as its argument the path to the file
     RESULT_BASE_DIR/rseeds.output produced in the previous run.
