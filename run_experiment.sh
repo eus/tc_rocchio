@@ -126,9 +126,15 @@ function next_rseed {
     fi
 }
 
-function extract_rseeds {
+function extract_rseeds_cross {
     sed -n \
         -e '/^2\. \[CROSS VALIDATION SETUP\]/ s%.*rseed=\([^]]\+\).*%\1%p' \
+        $1
+}
+
+function extract_rseeds {
+    extract_rseeds_cross $1
+    sed -n \
         -e '/^5\. \[TRAINING\] PRCs / s%.*seed=\([^]]\+\).*%\1%p' \
         $1
 }
@@ -361,7 +367,7 @@ function run_crossval_noES {
 	    eval $command 2>&1 | tee $tmp_timing_file
 
             # Extracting timing information
-            extract_rseeds $tmp_timing_file >> $rseeds_out_file
+            extract_rseeds_cross $tmp_timing_file >> $rseeds_out_file
             echo "$command" >> $timing_result
             extract_timings $tmp_timing_file >> $timing_result
 	    end=`cat $timing_result | wc -l`
