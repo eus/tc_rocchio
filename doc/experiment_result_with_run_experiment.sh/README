@@ -1,0 +1,36 @@
+All experiments are done using commit ae7602f3b3bcbcb5aa991b2f0294f1c6faa89ffa of https://www.github.com/eus/tc_rocchio.
+
+All experiments use SMART English stop list and arbitrary random seed.
+
+All experiments should be reproducible by using GNU/Linux Ubuntu 10.10 whose GNU C Library is Ubuntu EGLIBC 2.12.1-0ubuntu10.2 stable release version 2.12.1, whose GCC is gcc (Ubuntu/Linaro 4.4.4-14ubuntu5) 4.4.5, whose kernel is 2.6.35-28-generic, and running run_experiment.sh found in the tc_rocchio codebase supplying the option -R giving as its argument file rseeds found in this directory.
+
+The performances of the classifiers on Reuters-21578 Apté-split 90-categories collection can be found in file performance.csv while the complete command lines to driver.sh in each experiment as well as the timing information can be found in timing.csv.
+
+Below are the packaged experiment data that are not included in this directory due to its size. Obtaining the packages below can be useful to perform debugging when the result summarized in performance.csv cannot be reproduced. Some of the packages below are available on the Internet. Those that are not can be obtained by inquiring eus at member dot fsf dot org directly.
+
+[tokenization_and_TF_calculation_result-with_stop_list.cpio.xz]
+This file contains the result of running Step 0, Step 1 and Step 6 of driver.sh. The result is used in all experiments by skipping Step 0, Step 1 and Step 6. The file is available at: https://docs.google.com/leaf?id=0BzBTrlDO2291NmU0OTllYjQtYWZmNy00YzIyLThhOWItMzZlNDczZGRkZGRl&hl=en
+
+[result.dont_follow_roi.noES.cpio.xz]
+This file contains the result of running driver.sh with fixed P=.25 and P=1 on the fixed test set of the corpus. The file is available at: https://docs.google.com/leaf?id=0BzBTrlDO2291YjI5MThjMzItYWE4ZC00MTBkLTkzYjItMDY3MTQwY2EzMzA3&hl=en
+
+[result.dont_follow_roi.various_ES_percentages.cpio.xz]
+This file contains the result of running driver.sh with parameter tuning using P between 0 and 30, inclusive, with an increment of 1 on the fixed test set of the corpus. The experiment is repeated 20 times. The file is available at: https://docs.google.com/leaf?id=0BzBTrlDO2291MjIyYTY3NGMtNGIwNS00ZjMzLWI0YjctNzdlNGU0YTU4NmVm&hl=en
+
+[result.dont_follow_roi.crossval.noES.cpio.xz]
+This file contains the result of running driver.sh with fixed P=.25 and P=1. Each experiment is repeated 20 times each with a different test set. The test set consists 30% of the unique documents in the training and fixed test set of the corpus. The documents are pseudorandomly selected. The file is available at: https://docs.google.com/leaf?id=0BzBTrlDO2291MWNlNjM0M2YtNzhlMy00MGRjLWJjOWUtODhkNzg5Nzk2NmZk&hl=en
+
+[result.dont_follow_roi.crossval.various_ES_percentages.cpio.xz]
+This file contains the result of running driver.sh with parameter tuning using P between 0 and 30, inclusive, with an increment of 1. Each experiment is repeated 20 times each with a different test set. The test set consists 30% of the unique documents in the training and fixed test set of the corpus. The documents are pseudorandomly selected. The file is available at: https://docs.google.com/leaf?id=0BzBTrlDO2291YjIwZWNlZmYtMDQ0OS00OTJiLWI5OWEtMzYzZmEyODE2MzQy&hl=en
+
+[result.follow_roi.noES.cpio.xz]
+This file contains the result of running driver.sh with the same setting as that described in the corresponding dont_follow_roi file. The only difference is that in the case of a training document labeled with more than one category, let's say with N categories, the document weight vector will appear N-1 times in the penalizing part of Rocchio formula.
+
+[result.follow_roi.various_ES_percentages.cpio.xz]
+Ditto
+
+[result.follow_roi.crossval.noES.cpio.xz]
+Ditto
+
+[result.follow_roi.crossval.various_ES_percentages.cpio.xz]
+Ditto
